@@ -1,0 +1,100 @@
+[
+  {
+    "country_code": "MA",
+    "code": "CNSS_DECL",
+    "name": "Déclaration CNSS mensuelle",
+    "description": "Bordereau de déclaration des salaires — échéance le 15 du mois suivant",
+    "type": "social",
+    "authority": "CNSS",
+    "frequency": "monthly",
+    "reference_period": "previous_month",
+    "due_rule": { "type": "fixed_day_next_month", "day": 15 },
+    "grace_days": 0,
+    "effective_from": "2024-01-01",
+    "is_active": true,
+    "settings": {
+      "filing_channel": "online",
+      "is_mandatory": true,
+      "linked_categories": ["social_security", "health_insurance", "family_allowance"],
+      "linked_rule_codes": ["CNSS", "AMO"]
+    }
+  },
+  {
+    "country_code": "MA",
+    "code": "IR_DECL",
+    "name": "Déclaration IR (retenue à la source)",
+    "description": "Versement de l'impôt retenu à la source sur les salaires",
+    "type": "fiscal",
+    "authority": "DGI",
+    "frequency": "monthly",
+    "reference_period": "previous_month",
+    "due_rule": { "type": "fixed_day_next_month", "day": 15 },
+    "grace_days": 0,
+    "effective_from": "2024-01-01",
+    "is_active": true,
+    "settings": {
+      "filing_channel": "online",
+      "is_mandatory": true,
+      "linked_categories": ["income_tax"],
+      "linked_rule_codes": ["IR"]
+    }
+  },
+  {
+    "country_code": "MA",
+    "code": "TFP_DECL",
+    "name": "Déclaration taxe formation professionnelle",
+    "description": "Déclaration annuelle et versement TFP/OFPPT",
+    "type": "social",
+    "authority": "OFPPT",
+    "frequency": "annual",
+    "reference_period": "previous_year",
+    "due_rule": { "type": "fixed_day", "month": 3, "day": 31 },
+    "grace_days": 15,
+    "effective_from": "2024-01-01",
+    "is_active": true,
+    "settings": {
+      "filing_channel": "online",
+      "is_mandatory": true,
+      "linked_categories": ["training_tax"],
+      "linked_rule_codes": []
+    }
+  },
+  {
+    "country_code": "CD",
+    "code": "IPR_DECL",
+    "name": "Déclaration IPR",
+    "description": "Déclaration mensuelle de l'impôt professionnel sur les rémunérations",
+    "type": "fiscal",
+    "authority": "DGI",
+    "frequency": "monthly",
+    "reference_period": "previous_month",
+    "due_rule": { "type": "fixed_day_next_month", "day": 15 },
+    "grace_days": 0,
+    "effective_from": "2024-01-01",
+    "is_active": true,
+    "settings": {
+      "filing_channel": "online",
+      "is_mandatory": true,
+      "linked_rule_codes": ["IPR"]
+    }
+  },
+  {
+    "country_code": "CD",
+    "code": "CNSS_RDC_DECL",
+    "name": "Déclaration CNSS RDC",
+    "description": "Déclaration mensuelle des cotisations CNSS",
+    "type": "social",
+    "authority": "CNSS",
+    "frequency": "monthly",
+    "reference_period": "previous_month",
+    "due_rule": { "type": "fixed_day_next_month", "day": 15 },
+    "grace_days": 0,
+    "effective_from": "2024-01-01",
+    "is_active": true,
+    "settings": {
+      "filing_channel": "online",
+      "is_mandatory": true,
+      "linked_rule_codes": ["CNSS_RDC"]
+    }
+  }
+]

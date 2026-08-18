@@ -1,0 +1,437 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Application\Services;
+
+use App\Domain\Attendance\Models\AttendanceRecord;
+use App\Domain\Employee\Models\Employee;
+use App\Domain\Leave\Models\LeaveRequest;
+use App\Domain\Organization\Models\Holiday;
+use App\Domain\Recruitment\Models\Candidate;
+use App\Domain\Recruitment\Models\JobOpening;
+use App\Models\User;
+use Carbon\Carbon;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Support\Collection;
+
+/**
+ * Agrégat tableau de bord admin (GET /dashboard/admin).
+ */
+final class AdminDashboardService
+{
+    /** @return array<string, mixed> */
+    public function showForActor(User $actor, string $period = 'today'): array
+    {
+        $companyId = $this->companyId($actor);
+        $today = Carbon::today();
+        $period = in_array($period, ['today', 'week', 'month'], true) ? $period : 'today';
+
+        $employees = Employee::query()
+            ->where('company_id', $companyId)
+            ->where('is_active', true)
+            ->get(['id', 'first_name', 'last_name', 'job_title', 'metadata']);
+
+        $employeeCount = $employees->count();
+        $employeeMap = $employees->keyBy('id');
+
+        $applicantCount = Candidate::query()
+            ->where('company_id', $companyId)
+            ->count();
+
+        $openPositions = JobOpening::query()
+            ->where('company_id', $companyId)
+            ->where('status', 'open')
+            ->count();
+
+        $todayRecords = AttendanceRecord::query()
+            ->with(['employee', 'site'])
+            ->where('company_id', $companyId)
+            ->whereDate('attendance_date', $today)
+            ->orderBy('check_in')
+            ->get();
+
+        $todayPresent = $todayRecords->filter(
+            fn (AttendanceRecord $r) => in_array($r->status, ['on_time', 'late', 'half_day'], true)
+        )->count();
+
+        $yesterdayPresent = AttendanceRecord::query()
+            ->where('company_id', $companyId)
+            ->whereDate('attendance_date', $today->copy()->subDay())
+            ->whereIn('status', ['on_time', 'late', 'half_day'])
+            ->count();
+
+        $employeesLastMonth = Employee::query()
+            ->where('company_id', $companyId)
+            ->where('is_active', true)
+            ->where('created_at', '<', $today->copy()->startOfMonth())
+            ->count();
+
+        $applicantsLastMonth = Candidate::query()
+            ->where('company_id', $companyId)
+            ->where('created_at', '<', $today->copy()->startOfMonth())
+            ->count();
+
+        $openPositionsLastMonth = JobOpening::query()
+            ->where('company_id', $companyId)
+            ->where('status', 'open')
+            ->where('created_at', '<', $today->copy()->startOfMonth())
+            ->count();
+
+        return [
+            'kpis' => [
+                [
+                    'id' => 'employees',
+                    'title' => 'Total Employee',
+                    'value' => $employeeCount,
+                    'change' => $this->changePercent($employeeCount, $employeesLastMonth),
+                    'change_direction' => $this->changeDirection($employeeCount, $employeesLastMonth),
+                    'update_date' => $today->format('F j, Y'),
+                ],
+                [
+                    'id' => 'applicants',
+                    'title' => 'Total Applicant',
+                    'value' => $applicantCount,
+                    'change' => $this->changePercent($applicantCount, $applicantsLastMonth),
+                    'change_direction' => $this->changeDirection($applicantCount, $applicantsLastMonth),
+                    'update_date' => $today->format('F j, Y'),
+                ],
+                [
+                    'id' => 'attendance',
+                    'title' => 'Today Attendance',
+                    'value' => $todayPresent,
+                    'change' => $this->changePercent($todayPresent, $yesterdayPresent),
+                    'change_direction' => $this->changeDirection($todayPresent, $yesterdayPresent),
+                    'update_date' => $today->format('F j, Y'),
+                ],
+                [
+                    'id' => 'open_positions',
+                    'title' => 'Open Positions',
+                    'value' => $openPositions,
+                    'change' => $this->changePercent($openPositions, $openPositionsLastMonth),
+                    'change_direction' => $this->changeDirection($openPositions, $openPositionsLastMonth),
+                    'update_date' => $today->format('F j, Y'),
+                ],
+            ],
+            'attendance_chart' => $this->buildChart($companyId, $period, $today, max(1, $employeeCount)),
+            'attendance_today' => $todayRecords
+                ->take(12)
+                ->map(fn (AttendanceRecord $record) => $this->mapAttendanceRow($record, $employeeMap))
+                ->values()
+                ->all(),
+            'schedule' => $this->buildSchedule($companyId, $today),
+            'schedule_dates' => $this->scheduleHighlightDates($companyId, $today),
+        ];
+    }
+
+    /**
+     * @param  Collection<int, Employee>  $employeeMap
+     * @return array<string, mixed>
+     */
+    private function mapAttendanceRow(AttendanceRecord $record, Collection $employeeMap): array
+    {
+        $employee = $record->employee ?? $employeeMap->get($record->employee_id);
+        $first = trim((string) ($employee?->first_name ?? ''));
+        $last = trim((string) ($employee?->last_name ?? ''));
+        $name = trim($first.' '.$last) ?: 'Employee';
+        $metadata = is_array($employee?->metadata) ? $employee->metadata : [];
+        $designation = $metadata['designation']
+            ?? $employee?->job_title
+            ?? '—';
+        $attendanceType = $metadata['attendance_type'] ?? null;
+        $type = $this->mapAttendanceType($attendanceType);
+
+        return [
+            'id' => $record->id,
+            'name' => $name,
+            'initials' => $this->initials($first, $last, $name),
+            'designation' => $designation ?: '—',
+            'type' => $type,
+            'check_in' => $this->formatTime12($record->check_in),
+            'status' => $this->mapStatusLabel($record->status, $record->late_minutes),
+            'status_value' => $record->status,
+        ];
+    }
+
+    /** @return list<array{day: string, present: int, late: int, absent: int}> */
+    private function buildChart(int $companyId, string $period, Carbon $today, int $employeeCount): array
+    {
+        if ($period === 'today') {
+            return [$this->dayBucket($companyId, $today, 'Today', $employeeCount)];
+        }
+
+        if ($period === 'week') {
+            $start = $today->copy()->startOfWeek(Carbon::MONDAY);
+            $labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+            $bars = [];
+            for ($i = 0; $i < 7; $i++) {
+                $day = $start->copy()->addDays($i);
+                $bars[] = $this->dayBucket($companyId, $day, $labels[$i], $employeeCount);
+            }
+
+            return $bars;
+        }
+
+        // month → 4 semaines
+        $monthStart = $today->copy()->startOfMonth();
+        $bars = [];
+        for ($week = 0; $week < 4; $week++) {
+            $from = $monthStart->copy()->addWeeks($week);
+            $to = $from->copy()->addDays(6)->min($today->copy()->endOfMonth());
+            $bars[] = $this->rangeBucket(
+                $companyId,
+                $from,
+                $to,
+                'Week '.($week + 1),
+                $employeeCount
+            );
+        }
+
+        return $bars;
+    }
+
+    /** @return array{day: string, present: int, late: int, absent: int} */
+    private function dayBucket(int $companyId, Carbon $day, string $label, int $employeeCount): array
+    {
+        $records = AttendanceRecord::query()
+            ->where('company_id', $companyId)
+            ->whereDate('attendance_date', $day)
+            ->get(['status']);
+
+        return $this->toPercents($records, $label, $employeeCount);
+    }
+
+    /** @return array{day: string, present: int, late: int, absent: int} */
+    private function rangeBucket(
+        int $companyId,
+        Carbon $from,
+        Carbon $to,
+        string $label,
+        int $employeeCount,
+    ): array {
+        $records = AttendanceRecord::query()
+            ->where('company_id', $companyId)
+            ->whereDate('attendance_date', '>=', $from)
+            ->whereDate('attendance_date', '<=', $to)
+            ->get(['status']);
+
+        $days = max(1, (int) $from->diffInDays($to) + 1);
+
+        return $this->toPercents($records, $label, (int) ($employeeCount * $days));
+    }
+
+    /**
+     * @param  Collection<int, AttendanceRecord>  $records
+     * @return array{day: string, present: int, late: int, absent: int}
+     */
+    private function toPercents(Collection $records, string $label, int $denominator): array
+    {
+        $present = $records->filter(
+            fn ($r) => in_array($r->status, ['on_time', 'half_day'], true)
+        )->count();
+        $late = $records->where('status', 'late')->count();
+        $absent = $records->filter(
+            fn ($r) => in_array($r->status, ['absent', 'leave'], true)
+        )->count();
+
+        $base = max(1, $denominator);
+        $presentPct = (int) round(($present / $base) * 100);
+        $latePct = (int) round(($late / $base) * 100);
+        $absentPct = (int) round(($absent / $base) * 100);
+
+        // Cap stacked bar to 100%
+        $sum = $presentPct + $latePct + $absentPct;
+        if ($sum > 100 && $sum > 0) {
+            $presentPct = (int) round(($presentPct / $sum) * 100);
+            $latePct = (int) round(($latePct / $sum) * 100);
+            $absentPct = max(0, 100 - $presentPct - $latePct);
+        }
+
+        return [
+            'day' => $label,
+            'present' => $presentPct,
+            'late' => $latePct,
+            'absent' => $absentPct,
+        ];
+    }
+
+    /** @return list<array{date: string, date_iso: string, events: list<array{time: string, title: string, description: string}>}> */
+    private function buildSchedule(int $companyId, Carbon $today): array
+    {
+        $from = $today->copy()->startOfMonth();
+        $to = $today->copy()->addDays(14)->endOfDay();
+
+        $holidays = Holiday::query()
+            ->where('company_id', $companyId)
+            ->where('is_active', true)
+            ->whereDate('date', '>=', $from)
+            ->whereDate('date', '<=', $to)
+            ->orderBy('date')
+            ->get();
+
+        $leaves = LeaveRequest::query()
+            ->with('employee')
+            ->where('company_id', $companyId)
+            ->where('status', 'pending')
+            ->whereDate('start_date', '>=', $today)
+            ->whereDate('start_date', '<=', $to)
+            ->orderBy('start_date')
+            ->limit(20)
+            ->get();
+
+        /** @var array<string, list<array{time: string, title: string, description: string}>> $byDate */
+        $byDate = [];
+
+        foreach ($holidays as $holiday) {
+            $iso = $holiday->date?->toDateString();
+            if (! $iso) {
+                continue;
+            }
+            $byDate[$iso][] = [
+                'time' => 'All day',
+                'title' => $holiday->name,
+                'description' => $holiday->half_day ? 'Half-day holiday' : 'Company holiday',
+            ];
+        }
+
+        foreach ($leaves as $leave) {
+            $iso = $leave->start_date?->toDateString();
+            if (! $iso) {
+                continue;
+            }
+            $employee = $leave->employee;
+            $name = $employee
+                ? trim(($employee->first_name ?? '').' '.($employee->last_name ?? ''))
+                : 'Employee';
+            $byDate[$iso][] = [
+                'time' => 'Leave',
+                'title' => $name !== '' ? $name : 'Leave request',
+                'description' => 'Pending leave approval',
+            ];
+        }
+
+        ksort($byDate);
+
+        $groups = [];
+        foreach ($byDate as $iso => $events) {
+            $groups[] = [
+                'date' => Carbon::parse($iso)->format('l, d F Y'),
+                'date_iso' => $iso,
+                'events' => $events,
+            ];
+        }
+
+        return array_slice($groups, 0, 5);
+    }
+
+    /** @return list<string> */
+    private function scheduleHighlightDates(int $companyId, Carbon $today): array
+    {
+        $from = $today->copy()->startOfMonth();
+        $to = $today->copy()->endOfMonth()->addMonth();
+
+        $holidayDates = Holiday::query()
+            ->where('company_id', $companyId)
+            ->where('is_active', true)
+            ->whereDate('date', '>=', $from)
+            ->whereDate('date', '<=', $to)
+            ->pluck('date')
+            ->map(fn ($d) => Carbon::parse($d)->toDateString());
+
+        $leaveDates = LeaveRequest::query()
+            ->where('company_id', $companyId)
+            ->where('status', 'pending')
+            ->whereDate('start_date', '>=', $from)
+            ->whereDate('start_date', '<=', $to)
+            ->pluck('start_date')
+            ->map(fn ($d) => Carbon::parse($d)->toDateString());
+
+        return $holidayDates->merge($leaveDates)->unique()->values()->all();
+    }
+
+    private function companyId(User $actor): int
+    {
+        if (
+            $actor->company_id === null
+            || ! in_array($actor->role, ['admin', 'team_manager'], true)
+        ) {
+            throw new AuthorizationException('Accès non autorisé au tableau de bord admin.');
+        }
+
+        return (int) $actor->company_id;
+    }
+
+    private function changePercent(int $current, int $previous): string
+    {
+        if ($previous <= 0) {
+            return $current > 0 ? '100%' : '0%';
+        }
+
+        return abs((int) round((($current - $previous) / $previous) * 100)).'%';
+    }
+
+    private function changeDirection(int $current, int $previous): string
+    {
+        return $current >= $previous ? 'up' : 'down';
+    }
+
+    private function mapAttendanceType(?string $raw): string
+    {
+        $value = strtolower(trim((string) $raw));
+        if (in_array($value, ['remote', 'wfh', 'home'], true)) {
+            return 'Remote';
+        }
+        if (in_array($value, ['hybrid'], true)) {
+            return 'Hybrid';
+        }
+
+        return 'Office';
+    }
+
+    private function mapStatusLabel(?string $status, ?int $lateMinutes): string
+    {
+        $s = strtolower((string) $status);
+        if ($s === 'late' || ($lateMinutes ?? 0) > 0 && $s === 'on_time') {
+            return 'Late';
+        }
+        if ($s === 'half_day') {
+            return 'Half Day';
+        }
+        if ($s === 'leave') {
+            return 'Leave';
+        }
+        if ($s === 'absent') {
+            return 'Absent';
+        }
+
+        return 'On Time';
+    }
+
+    private function formatTime12(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return '—';
+        }
+        $raw = substr((string) $value, 0, 5);
+        if (! preg_match('/^(\d{1,2}):(\d{2})$/', $raw, $m)) {
+            return $raw;
+        }
+        $hours = (int) $m[1];
+        $minutes = $m[2];
+        $suffix = $hours >= 12 ? 'PM' : 'AM';
+        $hours = $hours % 12 ?: 12;
+
+        return sprintf('%02d:%s %s', $hours, $minutes, $suffix);
+    }
+
+    private function initials(string $first, string $last, string $name): string
+    {
+        $a = mb_substr($first, 0, 1);
+        $b = mb_substr($last, 0, 1);
+        if ($a !== '' || $b !== '') {
+            return mb_strtoupper($a.$b);
+        }
+
+        return mb_strtoupper(mb_substr($name, 0, 2));
+    }
+}

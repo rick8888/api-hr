@@ -1,0 +1,14 @@
+[
+  { "code": "employees", "label": "Gestion des employés", "category": "core", "description": "Fiches employés, organigramme, contrats", "sort_order": 1 },
+  { "code": "attendance", "label": "Présences & pointage", "category": "core", "description": "Suivi des heures, retards, absences", "sort_order": 2 },
+  { "code": "leave", "label": "Congés & absences", "category": "core", "description": "Demandes, soldes, calendrier d'équipe", "sort_order": 3 },
+  { "code": "self_service", "label": "Espace salarié", "category": "core", "description": "Portail self-service pour les collaborateurs", "sort_order": 4 },
+  { "code": "documents", "label": "Documents RH", "category": "hr", "description": "GED, demandes de documents, modèles", "sort_order": 5 },
+  { "code": "payroll", "label": "Paie", "category": "hr", "description": "Bulletins, composantes, déclarations", "sort_order": 6 },
+  { "code": "expenses", "label": "Notes de frais", "category": "hr", "description": "Soumission et validation des dépenses", "sort_order": 7 },
+  { "code": "recruitment", "label": "Recrutement", "category": "advanced", "description": "Offres, candidats, pipeline", "sort_order": 8 },
+  { "code": "training", "label": "Formation", "category": "advanced", "description": "Catalogue, sessions, suivi", "sort_order": 9 },
+  { "code": "analytics", "label": "Analytique RH", "category": "advanced", "description": "Tableaux de bord et indicateurs avancés", "sort_order": 10 },
+  { "code": "api_access", "label": "API & intégrations", "category": "enterprise", "description": "Accès API, webhooks, connecteurs", "sort_order": 11 },
+  { "code": "support_priority", "label": "Support prioritaire", "category": "enterprise", "description": "SLA renforcé et account manager dédié", "sort_order": 12 }
+]

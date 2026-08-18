@@ -1,0 +1,69 @@
+[
+  {
+    "code": "free",
+    "name": "Free",
+    "tagline": "Découvrir BravoRH — idéal pour les très petites équipes",
+    "price_monthly": 0,
+    "currency": "EUR",
+    "max_users": 3,
+    "max_employees": 15,
+    "storage_gb": 1,
+    "is_active": true,
+    "is_highlighted": false,
+    "is_free": true,
+    "sort_order": 1,
+    "included_services": ["employees", "attendance", "self_service"]
+  },
+  {
+    "code": "starter",
+    "name": "Starter",
+    "tagline": "Les essentiels RH pour les PME en croissance",
+    "price_monthly": 49,
+    "currency": "EUR",
+    "max_users": 10,
+    "max_employees": 50,
+    "storage_gb": 5,
+    "is_active": true,
+    "is_highlighted": false,
+    "is_free": false,
+    "sort_order": 2,
+    "included_services": ["employees", "attendance", "leave", "self_service", "documents"]
+  },
+  {
+    "code": "premium",
+    "name": "Premium",
+    "tagline": "Suite RH complète pour les entreprises structurées",
+    "price_monthly": 149,
+    "currency": "EUR",
+    "max_users": 50,
+    "max_employees": 200,
+    "storage_gb": 25,
+    "is_active": true,
+    "is_highlighted": true,
+    "is_free": false,
+    "sort_order": 3,
+    "included_services": [
+      "employees", "attendance", "leave", "self_service", "documents",
+      "payroll", "expenses", "recruitment", "training", "analytics"
+    ]
+  },
+  {
+    "code": "enterprise",
+    "name": "Entreprise",
+    "tagline": "Sans limite d'utilisateurs — modules et support étendus",
+    "price_monthly": 499,
+    "currency": "EUR",
+    "max_users": null,
+    "max_employees": null,
+    "storage_gb": null,
+    "is_active": true,
+    "is_highlighted": false,
+    "is_free": false,
+    "sort_order": 4,
+    "included_services": [
+      "employees", "attendance", "leave", "self_service", "documents",
+      "payroll", "expenses", "recruitment", "training", "analytics",
+      "api_access", "support_priority"
+    ]
+  }
+]

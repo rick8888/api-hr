@@ -1,0 +1,118 @@
+{
+  "invoices": [
+    {
+      "company_code": "ACME",
+      "invoice_number": "INV-2026-00001",
+      "plan_code": "premium",
+      "description": "Abonnement Premium — Février 2026",
+      "amount": 1490,
+      "currency": "MAD",
+      "status": "paid",
+      "issue_date": "2026-02-01",
+      "due_date": "2026-02-15",
+      "period_start": "2026-02-01",
+      "period_end": "2026-02-28",
+      "notes": "",
+      "payments": [
+        {
+          "amount": 1490,
+          "paid_at": "2026-02-08",
+          "method": "bank_transfer",
+          "reference": "VIR-20260208-001",
+          "notes": "Paiement intégral"
+        }
+      ]
+    },
+    {
+      "company_code": "BRAVO",
+      "invoice_number": "INV-2026-00002",
+      "plan_code": "enterprise",
+      "description": "Abonnement Entreprise — Mars 2026",
+      "amount": 4990,
+      "currency": "MAD",
+      "status": "paid",
+      "issue_date": "2026-03-01",
+      "due_date": "2026-03-15",
+      "period_start": "2026-03-01",
+      "period_end": "2026-03-31",
+      "notes": "",
+      "payments": [
+        {
+          "amount": 4990,
+          "paid_at": "2026-03-05",
+          "method": "card",
+          "reference": "CB-****4821",
+          "notes": ""
+        }
+      ]
+    },
+    {
+      "company_code": "ACME",
+      "invoice_number": "INV-2026-00003",
+      "plan_code": "premium",
+      "description": "Abonnement Premium — Mars 2026",
+      "amount": 1490,
+      "currency": "MAD",
+      "status": "pending",
+      "issue_date": "2026-03-01",
+      "due_date": "2026-03-15",
+      "period_start": "2026-03-01",
+      "period_end": "2026-03-31",
+      "notes": "",
+      "payments": []
+    },
+    {
+      "company_code": "GREENLOG",
+      "invoice_number": "INV-2026-00004",
+      "plan_code": "starter",
+      "description": "Abonnement Starter — Mars 2026",
+      "amount": 49,
+      "currency": "XOF",
+      "status": "partial",
+      "issue_date": "2026-02-01",
+      "due_date": "2026-02-15",
+      "period_start": "2026-02-01",
+      "period_end": "2026-02-28",
+      "notes": "Relance envoyée le 20/02",
+      "payments": [
+        {
+          "amount": 20,
+          "paid_at": "2026-02-10",
+          "method": "bank_transfer",
+          "reference": "VIR-SN-0210",
+          "notes": "Acompte — solde en attente"
+        }
+      ]
+    },
+    {
+      "company_code": "TECHNOVA",
+      "invoice_number": "INV-2026-00005",
+      "plan_code": "starter",
+      "description": "Abonnement Starter — Mars 2026",
+      "amount": 49,
+      "currency": "EUR",
+      "status": "draft",
+      "issue_date": "2026-03-10",
+      "due_date": "2026-03-24",
+      "period_start": "2026-03-01",
+      "period_end": "2026-03-31",
+      "notes": "Brouillon — en attente de validation",
+      "payments": []
+    },
+    {
+      "company_code": "BRAVO",
+      "invoice_number": "INV-2026-00006",
+      "plan_code": "starter",
+      "description": "Abonnement Starter — Février 2026",
+      "amount": 490,
+      "currency": "MAD",
+      "status": "cancelled",
+      "issue_date": "2026-02-01",
+      "due_date": "2026-02-15",
+      "period_start": "2026-02-01",
+      "period_end": "2026-02-28",
+      "notes": "Annulée — compte suspendu",
+      "payments": []
+    }
+  ]
+}

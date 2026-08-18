@@ -1,0 +1,20 @@
+[
+  {
+    "code": "bank_transfer",
+    "label": "Virement bancaire",
+    "description": "Paiement par virement bancaire avec justificatif",
+    "sort_order": 1
+  },
+  {
+    "code": "mobile_money",
+    "label": "Mobile money",
+    "description": "Paiement via opérateur mobile (Orange Money, M-Pesa, etc.)",
+    "sort_order": 2
+  },
+  {
+    "code": "cash",
+    "label": "Espèces",
+    "description": "Paiement en espèces enregistré manuellement",
+    "sort_order": 3
+  }
+]
