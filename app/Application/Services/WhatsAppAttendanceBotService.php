@@ -31,8 +31,8 @@ final class WhatsAppAttendanceBotService
         private readonly WhatsAppCloudClient $client,
         private readonly AttendanceRecordRepositoryInterface $records,
         private readonly AuditLogger $audit,
-    ) {
-    }
+        private readonly AttendanceMetricsCalculator $metrics,
+    ) {}
 
     /**
      * Traite un payload webhook Meta (value.messages).
@@ -129,7 +129,7 @@ final class WhatsAppAttendanceBotService
         $employee = $this->findEmployeeByPhone($companyId, $fromPhone);
         if ($employee === null) {
             return "Numéro non reconnu.\n"
-                ."Vérifiez que votre téléphone mobile est bien renseigné sur votre fiche employé (même numéro WhatsApp).";
+                .'Vérifiez que votre téléphone mobile est bien renseigné sur votre fiche employé (même numéro WhatsApp).';
         }
 
         if (! $employee->is_active) {
@@ -150,6 +150,11 @@ final class WhatsAppAttendanceBotService
             $now = Carbon::now()->format('H:i');
             $today = Carbon::today()->toDateString();
             $existing = $this->todayRecord((int) $employee->company_id, (int) $employee->id, $today);
+            $openRecord = $this->openRecord((int) $employee->company_id, (int) $employee->id);
+
+            if ($openRecord !== null && ($existing === null || $openRecord->isNot($existing))) {
+                return '❌ Terminez le pointage précédent avant de commencer une nouvelle journée.';
+            }
 
             if ($existing !== null && filled($existing->check_in)) {
                 $in = substr((string) $existing->check_in, 0, 5);
@@ -157,16 +162,19 @@ final class WhatsAppAttendanceBotService
                 return "✅ Déjà pointé à l’entrée à {$in}.";
             }
 
-            DB::transaction(function () use ($employee, $today, $now, $existing) {
+            $shiftId = $existing?->shift_id ?? $this->assignedShiftId($employee);
+            DB::transaction(function () use ($employee, $today, $now, $existing, $shiftId) {
                 $payload = $this->withMetrics([
                     'company_id' => (int) $employee->company_id,
                     'employee_id' => (int) $employee->id,
                     'attendance_date' => $today,
-                    'shift_id' => $existing?->shift_id,
+                    'shift_id' => $shiftId,
                     'site_id' => $existing?->site_id,
                     'check_in' => $now,
                     'check_out' => null,
-                    'status' => $existing?->status ?: 'on_time',
+                    'status' => in_array($existing?->status, ['absent', 'leave'], true)
+                        ? 'on_time'
+                        : ($existing?->status ?: 'on_time'),
                 ]);
 
                 if ($existing !== null) {
@@ -198,17 +206,17 @@ final class WhatsAppAttendanceBotService
         try {
             $now = Carbon::now()->format('H:i');
             $today = Carbon::today()->toDateString();
-            $existing = $this->todayRecord((int) $employee->company_id, (int) $employee->id, $today);
+            $todayRecord = $this->todayRecord((int) $employee->company_id, (int) $employee->id, $today);
+            if ($todayRecord !== null && filled($todayRecord->check_out)) {
+                $out = substr((string) $todayRecord->check_out, 0, 5);
+
+                return "✅ Déjà pointé en sortie à {$out}.";
+            }
+            $existing = $this->openRecord((int) $employee->company_id, (int) $employee->id);
 
             if ($existing === null || blank($existing->check_in)) {
                 return '❌ Vous devez d’abord pointer l’entrée (envoyez ENTREE).';
             }
-            if (filled($existing->check_out)) {
-                $out = substr((string) $existing->check_out, 0, 5);
-
-                return "✅ Déjà pointé en sortie à {$out}.";
-            }
-
             DB::transaction(function () use ($existing, $now) {
                 $payload = $this->withMetrics([
                     'company_id' => (int) $existing->company_id,
@@ -240,6 +248,7 @@ final class WhatsAppAttendanceBotService
     {
         $today = Carbon::today()->toDateString();
         $record = $this->todayRecord((int) $employee->company_id, (int) $employee->id, $today);
+        $record ??= $this->openRecord((int) $employee->company_id, (int) $employee->id);
         $name = trim($employee->first_name.' '.$employee->last_name);
 
         if ($record === null) {
@@ -250,7 +259,9 @@ final class WhatsAppAttendanceBotService
         $out = $record->check_out ? substr((string) $record->check_out, 0, 5) : '—';
         $status = (string) ($record->status ?: '—');
 
-        return "📋 {$name} — {$today}\nEntrée : {$in}\nSortie : {$out}\nStatut : {$status}";
+        $recordDate = $record->attendance_date?->toDateString() ?? $today;
+
+        return "📋 {$name} — {$recordDate}\nEntrée : {$in}\nSortie : {$out}\nStatut : {$status}";
     }
 
     private function findEmployeeByPhone(int $companyId, string $fromPhone): ?Employee
@@ -309,6 +320,40 @@ final class WhatsAppAttendanceBotService
             ->first();
     }
 
+    private function openRecord(int $companyId, int $employeeId): ?AttendanceRecord
+    {
+        return AttendanceRecord::query()
+            ->where('company_id', $companyId)
+            ->where('employee_id', $employeeId)
+            ->whereDate('attendance_date', '>=', Carbon::yesterday()->toDateString())
+            ->whereDate('attendance_date', '<=', Carbon::today()->toDateString())
+            ->whereNotNull('check_in')
+            ->whereNull('check_out')
+            ->orderByDesc('attendance_date')
+            ->first();
+    }
+
+    private function assignedShiftId(Employee $employee): ?int
+    {
+        $metadata = is_array($employee->metadata) ? $employee->metadata : [];
+        $shiftId = $metadata['shift_id'] ?? null;
+        if ($shiftId === null || $shiftId === '') {
+            return null;
+        }
+
+        $shift = Shift::query()
+            ->whereKey((int) $shiftId)
+            ->where('company_id', $employee->company_id)
+            ->first();
+        if ($shift === null) {
+            throw ValidationException::withMessages([
+                'shift' => 'Le shift affecté à votre profil est introuvable pour cette société.',
+            ]);
+        }
+
+        return (int) $shift->id;
+    }
+
     /**
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
@@ -316,33 +361,8 @@ final class WhatsAppAttendanceBotService
     private function withMetrics(array $payload): array
     {
         $shift = isset($payload['shift_id']) ? Shift::query()->find($payload['shift_id']) : null;
-        $checkIn = $this->minutes($payload['check_in'] ?? null);
-        $checkOut = $this->minutes($payload['check_out'] ?? null);
-        $shiftStart = $this->minutes($shift?->start_time);
-        $shiftEnd = $this->minutes($shift?->end_time);
 
-        $payload['late_minutes'] = $checkIn !== null && $shiftStart !== null
-            ? max(0, $checkIn - $shiftStart) : 0;
-        $payload['early_out_minutes'] = $checkOut !== null && $shiftEnd !== null
-            ? max(0, $shiftEnd - $checkOut) : 0;
-        $payload['overtime_minutes'] = $checkOut !== null && $shiftEnd !== null
-            ? max(0, $checkOut - $shiftEnd) : 0;
-
-        if (($payload['status'] ?? 'on_time') === 'on_time' && ($payload['late_minutes'] ?? 0) > 0) {
-            $payload['status'] = 'late';
-        }
-
-        return $payload;
-    }
-
-    private function minutes(mixed $time): ?int
-    {
-        if ($time === null || $time === '') {
-            return null;
-        }
-        [$hours, $minutes] = array_map('intval', explode(':', substr((string) $time, 0, 5)));
-
-        return $hours * 60 + $minutes;
+        return $this->metrics->calculate($payload, $shift);
     }
 
     private function firstValidationMessage(ValidationException $e): string

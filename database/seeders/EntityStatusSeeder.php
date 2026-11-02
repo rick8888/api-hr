@@ -55,6 +55,8 @@ class EntityStatusSeeder extends Seeder
         $push('employees', [
             ['active', 'Actif', 'Active', 'success', 'Employé en poste.'],
             ['inactive', 'Inactif', 'Inactive', 'warning', 'Compte désactivé.'],
+            ['suspended', 'Suspendu', 'Suspended', 'warning', 'Accès temporairement restreint.'],
+            ['retired', 'Retraité', 'Retired', 'info', 'Employé à la retraite.'],
             ['terminated', 'Sorti', 'Terminated', 'danger', 'Contrat terminé.'],
             ['onboarding', 'Intégration', 'Onboarding', 'info', 'En cours d’intégration.'],
         ]);

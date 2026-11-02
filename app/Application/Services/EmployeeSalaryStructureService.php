@@ -5,18 +5,20 @@ declare(strict_types=1);
 namespace App\Application\Services;
 
 use App\Application\DTO\Payroll\SalaryStructureData;
+use App\Domain\Employee\Models\Employee;
 use App\Domain\Payroll\Models\EmployeeSalaryStructure;
+use App\Domain\Payroll\Models\SalaryComponent;
 use App\Domain\Payroll\Repositories\EmployeeSalaryStructureRepositoryInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 final class EmployeeSalaryStructureService
 {
     public function __construct(
         private readonly EmployeeSalaryStructureRepositoryInterface $repository,
         private readonly AuditLogger $audit,
-    ) {
-    }
+    ) {}
 
     /** @return Collection<int, EmployeeSalaryStructure> */
     public function listForEmployee(int $employeeId): Collection
@@ -35,6 +37,27 @@ final class EmployeeSalaryStructureService
      */
     public function assignStructure(SalaryStructureData $data): EmployeeSalaryStructure
     {
+        $employee = Employee::query()->findOrFail($data->employeeId);
+        $componentIds = array_values(array_unique(array_map(
+            static fn ($line) => $line->salaryComponentId,
+            $data->lines,
+        )));
+        if ($componentIds !== []) {
+            $matchingComponents = SalaryComponent::query()
+                ->whereIn('id', $componentIds)
+                ->where(function ($query) use ($employee) {
+                    $query->whereNull('company_id')
+                        ->orWhere('company_id', $employee->company_id);
+                })
+                ->count();
+
+            if ($matchingComponents !== count($componentIds)) {
+                throw ValidationException::withMessages([
+                    'lines' => 'Un ou plusieurs composants de paie ne sont pas accessibles pour cet employé.',
+                ]);
+            }
+        }
+
         return DB::transaction(function () use ($data) {
             if ($data->status === EmployeeSalaryStructure::STATUS_ACTIVE) {
                 $this->repository->archivePrevious($data->employeeId, $data->effectiveFrom);
@@ -71,6 +94,7 @@ final class EmployeeSalaryStructureService
             'effective_to' => $structure->effective_to ?? now()->toDateString(),
         ]);
         $this->audit->log('salary_structure.archived', $updated);
+
         return $updated;
     }
 }

@@ -9,8 +9,11 @@ use App\Application\Services\EmployeeImportExportService;
 use App\Application\Services\EmployeeService;
 use App\Domain\Employee\Models\Employee;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Employee\BulkUpdateEmployeeStatusRequest;
 use App\Http\Requests\Employee\ImportEmployeeRequest;
 use App\Http\Requests\Employee\StoreEmployeeRequest;
+use App\Http\Requests\Employee\SuspendEmployeeRequest;
+use App\Http\Requests\Employee\TerminateEmployeeRequest;
 use App\Http\Requests\Employee\UpdateEmployeeRequest;
 use App\Http\Resources\EmployeeResource;
 use Illuminate\Http\JsonResponse;
@@ -85,6 +88,54 @@ class EmployeeController extends Controller
     public function toggleStatus(Request $request, Employee $employee): EmployeeResource
     {
         $updated = $this->service->toggleStatusForActor($request->user(), $employee);
+
+        return new EmployeeResource($updated);
+    }
+
+    public function bulkStatus(BulkUpdateEmployeeStatusRequest $request): JsonResponse
+    {
+        $result = $this->service->bulkSetStatusForActor(
+            $request->user(),
+            $request->validated('ids'),
+            (string) $request->validated('status'),
+        );
+
+        return response()->json([
+            'data' => [
+                'updated' => array_map(
+                    static fn (Employee $employee) => (new EmployeeResource($employee))->resolve(),
+                    $result['updated'],
+                ),
+                'skipped' => $result['skipped'],
+            ],
+        ]);
+    }
+
+    public function suspend(SuspendEmployeeRequest $request, Employee $employee): EmployeeResource
+    {
+        $updated = $this->service->suspendForActor(
+            $request->user(),
+            $employee,
+            $request->validated()
+        );
+
+        return new EmployeeResource($updated);
+    }
+
+    public function terminate(TerminateEmployeeRequest $request, Employee $employee): EmployeeResource
+    {
+        $updated = $this->service->terminateForActor(
+            $request->user(),
+            $employee,
+            $request->validated()
+        );
+
+        return new EmployeeResource($updated);
+    }
+
+    public function retire(Request $request, Employee $employee): EmployeeResource
+    {
+        $updated = $this->service->retireForActor($request->user(), $employee);
 
         return new EmployeeResource($updated);
     }

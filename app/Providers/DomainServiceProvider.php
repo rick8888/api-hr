@@ -37,6 +37,8 @@ use App\Domain\Platform\Repositories\DayTypeRepositoryInterface;
 use App\Domain\Platform\Repositories\DocumentCategoryRepositoryInterface;
 use App\Domain\Platform\Repositories\EquipmentCategoryRepositoryInterface;
 use App\Domain\Platform\Repositories\ExpenseTypeRepositoryInterface;
+use App\Domain\DocumentTemplate\Repositories\DocumentTemplateRepositoryInterface;
+use App\Domain\Platform\Repositories\TerminationTypeRepositoryInterface;
 use App\Domain\Platform\Repositories\PayrollCycleRepositoryInterface;
 use App\Domain\Platform\Repositories\TrainingCategoryRepositoryInterface;
 use App\Domain\Platform\Repositories\RegularizationTypeRepositoryInterface;
@@ -95,6 +97,8 @@ use App\Infrastructure\Repositories\Eloquent\EloquentDayTypeRepository;
 use App\Infrastructure\Repositories\Eloquent\EloquentDocumentCategoryRepository;
 use App\Infrastructure\Repositories\Eloquent\EloquentEquipmentCategoryRepository;
 use App\Infrastructure\Repositories\Eloquent\EloquentExpenseTypeRepository;
+use App\Infrastructure\Repositories\Eloquent\EloquentDocumentTemplateRepository;
+use App\Infrastructure\Repositories\Eloquent\EloquentTerminationTypeRepository;
 use App\Infrastructure\Repositories\Eloquent\EloquentPayrollCycleRepository;
 use App\Infrastructure\Repositories\Eloquent\EloquentTrainingCategoryRepository;
 use App\Infrastructure\Repositories\Eloquent\EloquentRegularizationTypeRepository;
@@ -150,6 +154,8 @@ class DomainServiceProvider extends ServiceProvider
         DocumentCategoryRepositoryInterface::class => EloquentDocumentCategoryRepository::class,
         EquipmentCategoryRepositoryInterface::class => EloquentEquipmentCategoryRepository::class,
         ExpenseTypeRepositoryInterface::class => EloquentExpenseTypeRepository::class,
+        TerminationTypeRepositoryInterface::class => EloquentTerminationTypeRepository::class,
+        DocumentTemplateRepositoryInterface::class => EloquentDocumentTemplateRepository::class,
         PayrollCycleRepositoryInterface::class => EloquentPayrollCycleRepository::class,
         TrainingCategoryRepositoryInterface::class => EloquentTrainingCategoryRepository::class,
         RegularizationTypeRepositoryInterface::class => EloquentRegularizationTypeRepository::class,

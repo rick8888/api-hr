@@ -31,6 +31,13 @@ class LegalTax extends Model
     public const BASE_BASE = 'BASE';
     public const BASE_CUSTOM = 'CUSTOM';
 
+    public const SUPPORTED_BASES = [
+        self::BASE_BASE,
+        self::BASE_GROSS,
+        self::BASE_TAXABLE,
+        self::BASE_NET,
+    ];
+
     protected $fillable = [
         'country_id',
         'code',

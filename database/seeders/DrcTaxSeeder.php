@@ -12,16 +12,20 @@ use Illuminate\Database\Seeder;
 /**
  * Seeds DR Congo (RDC) legal taxes.
  *
- * Reference (illustrative):
+ * Provisional reference:
  *   - CNSS RDC : employer 13.0% / employee 5.0% on gross salary
- *   - INPP     : employer 1.0% to 3.0% (we use 2.0%) on gross
+ *   - INPP     : employer 1.0% to 3.0%; 2.0% only applies to private firms with 51-300 employees
  *   - ONEM     : employer 0.2% on gross
  *   - IPR (Impôt Professionnel sur le Rémunération): progressive monthly bracket
  *        0       - 1 944 000 CDF  : 3%
  *        1 944 001 - 21 600 000   : 15%
  *        21 600 001 - 43 200 000  : 30%
  *        > 43 200 000             : 40%
- *      (annualised values; in production, divide by 12 if applied monthly)
+ *      (monthly thresholds below; IPR is capped at 30% of taxable salary)
+ *
+ * Sources:
+ *   https://taxsummaries.pwc.com/democratic-republic-of-the-congo/individual/other-taxes
+ *   https://taxsummaries.pwc.com/democratic-republic-of-the-congo/individual/taxes-on-personal-income
  */
 class DrcTaxSeeder extends Seeder
 {
@@ -33,7 +37,7 @@ class DrcTaxSeeder extends Seeder
             ['country_id' => $rdc->id, 'code' => 'CNSS_RDC'],
             [
                 'name' => 'CNSS RDC',
-                'description' => "Cotisation sécurité sociale (RDC).",
+                'description' => "[À VALIDER — activation provisoire demandée] Taux combiné : 13 % employeur (6,5 % prestations familiales, 5 % pension, 1,5 % risques professionnels) et 5 % salarié pour la pension. Confirmer l'assiette et l'actualité avant usage en production.",
                 'type' => LegalTax::TYPE_PERCENT,
                 'base_target' => LegalTax::BASE_GROSS,
                 'employer_rate' => 0.130,
@@ -49,7 +53,7 @@ class DrcTaxSeeder extends Seeder
             ['country_id' => $rdc->id, 'code' => 'INPP'],
             [
                 'name' => 'INPP',
-                'description' => "Institut National de Préparation Professionnelle.",
+                'description' => "[À VALIDER — activation provisoire demandée] Le taux de 2 % ne vaut que pour les entreprises privées de 51 à 300 salariés ; 3 % jusqu'à 50 salariés et 1 % au-delà. Le profil ne varie pas encore selon l'effectif.",
                 'type' => LegalTax::TYPE_PERCENT,
                 'base_target' => LegalTax::BASE_GROSS,
                 'employer_rate' => 0.020,
@@ -65,7 +69,7 @@ class DrcTaxSeeder extends Seeder
             ['country_id' => $rdc->id, 'code' => 'ONEM'],
             [
                 'name' => 'ONEM',
-                'description' => "Office National de l'Emploi.",
+                'description' => "[À VALIDER — activation provisoire demandée] Contribution employeur de 0,2 %. Confirmer l'assiette et l'actualité avant usage en production.",
                 'type' => LegalTax::TYPE_PERCENT,
                 'base_target' => LegalTax::BASE_GROSS,
                 'employer_rate' => 0.002,
@@ -81,9 +85,10 @@ class DrcTaxSeeder extends Seeder
             ['country_id' => $rdc->id, 'code' => 'IPR'],
             [
                 'name' => 'IPR',
-                'description' => "Impôt Professionnel sur le Revenu (barème mensuel).",
+                'description' => "[À VALIDER — activation provisoire demandée] Barème mensuel avec plafonnement provisoire du montant calculé à 30 % de la base imposable. Confirmer le barème, le calcul mensuel et les règles d'assiette avant usage en production.",
                 'type' => LegalTax::TYPE_PROGRESSIVE,
                 'base_target' => LegalTax::BASE_TAXABLE,
+                'formula' => 'MIN(TAX_AMOUNT, BASE * 0.3)',
                 'employer_rate' => 0,
                 'employee_rate' => 0,
                 'ceiling' => null,

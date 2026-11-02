@@ -51,6 +51,7 @@ class RoleSeeder extends Seeder
                     'payroll.view',
                     'reports.view',
                     'settings.manage',
+                    'self_service.access',
                 ],
                 'is_system' => true,
             ],

@@ -20,6 +20,7 @@ final class EloquentEmployeeRepository implements EmployeeRepositoryInterface
     {
         return Employee::query()
             ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+            ->when($companyId, fn ($q) => $this->excludeTenantProfiles($q, $companyId))
             ->orderBy('last_name')
             ->paginate($perPage);
     }
@@ -31,11 +32,22 @@ final class EloquentEmployeeRepository implements EmployeeRepositoryInterface
         $structureStatus = isset($filters['structure_status'])
             ? trim((string) $filters['structure_status'])
             : '';
+        $employeeIds = isset($filters['employee_ids']) && is_array($filters['employee_ids'])
+            ? array_values(array_map('intval', $filters['employee_ids']))
+            : [];
+
+        if ($employeeIds === []) {
+            if (array_key_exists('employee_ids', $filters)) {
+                return new Collection();
+            }
+        }
 
         $expectedComponentIds = $this->expectedSalaryComponentIds($companyId);
 
         return Employee::query()
             ->where('company_id', $companyId)
+            ->when($employeeIds !== [], fn ($q) => $q->whereIn('id', $employeeIds))
+            ->tap(fn ($q) => $this->excludeTenantProfiles($q, $companyId))
             ->when($search !== '', function ($q) use ($search) {
                 $like = '%'.$search.'%';
                 $q->where(function ($inner) use ($like) {
@@ -83,6 +95,28 @@ final class EloquentEmployeeRepository implements EmployeeRepositoryInterface
             ->orderBy('last_name')
             ->orderBy('first_name')
             ->get();
+    }
+
+    /**
+     * Un tenant n'est pas un employé RH : exclure metadata.role=tenant
+     * et les emails liés à un user.role=tenant de la même société.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<\App\Domain\Employee\Models\Employee>  $query
+     */
+    private function excludeTenantProfiles($query, int $companyId): void
+    {
+        $query
+            ->where(function ($q) {
+                $q->whereNull('metadata->role')
+                    ->orWhere('metadata->role', '<>', 'tenant');
+            })
+            ->whereNotExists(function ($q) use ($companyId) {
+                $q->selectRaw('1')
+                    ->from('users')
+                    ->where('users.company_id', $companyId)
+                    ->where('users.role', 'tenant')
+                    ->whereRaw('LOWER(users.email) = LOWER(employees.email)');
+            });
     }
 
     /**

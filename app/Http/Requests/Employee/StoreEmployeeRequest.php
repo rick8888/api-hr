@@ -35,6 +35,8 @@ class StoreEmployeeRequest extends FormRequest
             'employeeCode' => 'matricule',
             'createUser' => 'create_user',
             'useDefaultPassword' => 'use_default_password',
+            'notifyByEmail' => 'notify_by_email',
+            'sendWelcomeEmail' => 'send_welcome_email',
         ];
 
         foreach ($map as $from => $to) {
@@ -62,6 +64,7 @@ class StoreEmployeeRequest extends FormRequest
         $companyId = $this->user()?->company_id;
         $activeRoleSlugs = Role::query()
             ->where('is_active', true)
+            ->whereNotIn('slug', ['super_admin', 'tenant'])
             ->pluck('slug')
             ->all();
 
@@ -93,6 +96,8 @@ class StoreEmployeeRequest extends FormRequest
             'password' => ['nullable', 'string', 'min:8', 'max:120'],
             'use_default_password' => ['nullable', 'boolean'],
             'create_user' => ['nullable', 'boolean'],
+            'notify_by_email' => ['sometimes', 'boolean'],
+            'send_welcome_email' => ['sometimes', 'boolean'],
             'metadata' => ['nullable', 'array'],
         ];
     }

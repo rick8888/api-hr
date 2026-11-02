@@ -16,6 +16,8 @@ class CountrySeeder extends Seeder
             ['code' => 'CD',  'name' => 'République Démocratique du Congo', 'currency' => 'CDF', 'locale' => 'fr_CD'],
             ['code' => 'FR',  'name' => 'France',                      'currency' => 'EUR', 'locale' => 'fr_FR'],
             ['code' => 'CIV', 'name' => "Côte d'Ivoire",               'currency' => 'XOF', 'locale' => 'fr_CI'],
+            ['code' => 'SN',  'name' => 'Sénégal',                      'currency' => 'XOF', 'locale' => 'fr_SN'],
+            ['code' => 'CG',  'name' => 'République du Congo',          'currency' => 'XAF', 'locale' => 'fr_CG'],
         ];
 
         foreach ($countries as $country) {

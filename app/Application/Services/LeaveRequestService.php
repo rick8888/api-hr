@@ -24,6 +24,7 @@ final class LeaveRequestService
         private readonly LeaveTypeRepositoryInterface $leaveTypes,
         private readonly EmployeeProfileLinker $employeeProfiles,
         private readonly AuditLogger $audit,
+        private readonly TeamScopeService $teamScope,
     ) {
     }
 
@@ -77,6 +78,11 @@ final class LeaveRequestService
 
         unset($scopedFilters['mine']);
 
+        $scopedFilters = $this->teamScope->mergeEmployeeListFilters($actor, $scopedFilters);
+        if ($scopedFilters === null) {
+            return new Collection();
+        }
+
         return $this->repository->listByCompany($companyId, $scopedFilters);
     }
 
@@ -99,7 +105,8 @@ final class LeaveRequestService
         }
 
         $this->ensureEmployeeBelongsToCompany($data->employeeId, $companyId);
-        $this->assertValidDates($data->startDate, $data->endDate, $data->durationKind);
+        $this->teamScope->ensureManagesEmployeeId($actor, $data->employeeId, $companyId);
+        $this->assertValidDates($data->startDate, $data->endDate, $data->durationKind, $data->totalDays);
 
         return DB::transaction(function () use ($companyId, $data) {
             $payload = $data->toModelArray();
@@ -126,6 +133,7 @@ final class LeaveRequestService
         $companyId = $this->resolveCompanyId($actor);
         $this->ensureBelongsToCompany($leaveRequest, $companyId);
         $this->ensureSelfServiceOwnsRequest($actor, $leaveRequest);
+        $this->teamScope->ensureManagesEmployeeId($actor, (int) $leaveRequest->employee_id, $companyId);
 
         if ($leaveRequest->status !== 'pending') {
             throw ValidationException::withMessages([
@@ -141,9 +149,10 @@ final class LeaveRequestService
             } elseif (isset($payload['employee_id'])) {
                 $this->ensureEmployeeBelongsToCompany((int) $payload['employee_id'], $companyId);
             }
+            $this->teamScope->ensureManagesEmployeeId($actor, (int) $payload['employee_id'], $companyId);
 
             $data = LeaveRequestData::fromArray($payload);
-            $this->assertValidDates($data->startDate, $data->endDate, $data->durationKind);
+            $this->assertValidDates($data->startDate, $data->endDate, $data->durationKind, $data->totalDays);
 
             $updated = $this->repository->update($leaveRequest, $data->toModelArray());
 
@@ -164,6 +173,7 @@ final class LeaveRequestService
         $companyId = $this->resolveCompanyId($actor);
         $this->ensureBelongsToCompany($leaveRequest, $companyId);
         $this->ensureSelfServiceOwnsRequest($actor, $leaveRequest);
+        $this->teamScope->ensureManagesEmployeeId($actor, (int) $leaveRequest->employee_id, $companyId);
 
         if (! EntityStatusCatalog::contains('leave_requests', $status, LeaveRequest::STATUSES)) {
             throw ValidationException::withMessages([
@@ -220,8 +230,10 @@ final class LeaveRequestService
 
     public function findForActor(User $actor, LeaveRequest $leaveRequest): LeaveRequest
     {
-        $this->ensureBelongsToCompany($leaveRequest, $this->resolveCompanyId($actor));
+        $companyId = $this->resolveCompanyId($actor);
+        $this->ensureBelongsToCompany($leaveRequest, $companyId);
         $this->ensureSelfServiceOwnsRequest($actor, $leaveRequest);
+        $this->teamScope->ensureManagesEmployeeId($actor, (int) $leaveRequest->employee_id, $companyId);
 
         return $leaveRequest->loadMissing('employee');
     }
@@ -305,7 +317,12 @@ final class LeaveRequestService
         }
     }
 
-    private function assertValidDates(string $startDate, string $endDate, string $durationKind): void
+    private function assertValidDates(
+        string $startDate,
+        string $endDate,
+        string $durationKind,
+        float $totalDays,
+    ): void
     {
         if ($endDate < $startDate) {
             throw ValidationException::withMessages([
@@ -316,6 +333,13 @@ final class LeaveRequestService
         if ($durationKind === 'half' && $startDate !== $endDate) {
             throw ValidationException::withMessages([
                 'end_date' => 'Une demi-journée doit porter sur une seule date.',
+            ]);
+        }
+
+        $expectedDays = LeaveRequest::expectedTotalDays($startDate, $endDate, $durationKind);
+        if (abs($totalDays - $expectedDays) > 0.0001) {
+            throw ValidationException::withMessages([
+                'total_days' => 'Le nombre de jours doit correspondre aux dates et à la durée sélectionnées.',
             ]);
         }
     }

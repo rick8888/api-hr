@@ -21,6 +21,7 @@ final class RegularizationService
         private readonly RegularizationRepositoryInterface $repository,
         private readonly EmployeeProfileLinker $employeeProfiles,
         private readonly AuditLogger $audit,
+        private readonly TeamScopeService $teamScope,
     ) {
     }
 
@@ -38,6 +39,11 @@ final class RegularizationService
         }
 
         unset($scoped['mine']);
+
+        $scoped = $this->teamScope->mergeEmployeeListFilters($actor, $scoped);
+        if ($scoped === null) {
+            return new Collection();
+        }
 
         return $this->repository->listByCompany($companyId, $scoped);
     }
@@ -122,6 +128,7 @@ final class RegularizationService
 
         $companyId = $this->resolveCompanyId($actor);
         $this->ensureBelongsToCompany($regularization, $companyId);
+        $this->teamScope->ensureManagesEmployeeId($actor, (int) $regularization->employee_id, $companyId);
 
         if (! EntityStatusCatalog::contains('regularizations', $status, Regularization::STATUSES)) {
             throw ValidationException::withMessages([
@@ -170,8 +177,10 @@ final class RegularizationService
 
     public function findForActor(User $actor, Regularization $regularization): Regularization
     {
-        $this->ensureBelongsToCompany($regularization, $this->resolveCompanyId($actor));
+        $companyId = $this->resolveCompanyId($actor);
+        $this->ensureBelongsToCompany($regularization, $companyId);
         $this->ensureSelfServiceOwns($actor, $regularization);
+        $this->teamScope->ensureManagesEmployeeId($actor, (int) $regularization->employee_id, $companyId);
 
         return $regularization->loadMissing('employee');
     }

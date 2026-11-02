@@ -8,7 +8,6 @@ use App\Domain\Employee\Models\Employee;
 use App\Domain\Payroll\Models\Payroll;
 use App\Domain\Payroll\Models\PayrollLine;
 use App\Models\User;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Collection;
@@ -27,6 +26,7 @@ final class SelfServicePayslipsService
 
     public function __construct(
         private readonly EmployeeProfileLinker $employeeProfiles,
+        private readonly PayslipPdfService $payslipPdf,
     ) {
     }
 
@@ -68,16 +68,10 @@ final class SelfServicePayslipsService
 
     public function downloadPdfForActor(User $actor, int $payrollId): Response
     {
-        $detail = $this->showForActor($actor, $payrollId);
-        $filename = preg_replace(
-            '/[^A-Za-z0-9._-]/',
-            '_',
-            (string) ($detail['code'] ?? 'payslip-'.$payrollId)
-        ).'.pdf';
+        $employee = $this->requireEmployee($actor);
+        $payroll = $this->findOwnedPayroll($actor, $employee, $payrollId);
 
-        return Pdf::loadView('payslips.self-service', ['payslip' => $detail])
-            ->setPaper('a4')
-            ->download($filename);
+        return $this->payslipPdf->download($payroll);
     }
 
     private function requireEmployee(User $actor): Employee

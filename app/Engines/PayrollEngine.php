@@ -7,6 +7,7 @@ namespace App\Engines;
 use App\Application\DTO\Payroll\PayrollContext;
 use App\Application\DTO\Payroll\PayrollLineDTO;
 use App\Application\DTO\Payroll\PayrollResult;
+use App\Application\Services\PayrollAttendanceCalculator;
 use App\Domain\Employee\Models\Employee;
 use App\Domain\Payroll\Models\EmployeeSalaryStructure;
 use App\Domain\Payroll\Models\EmployeeSalaryStructureLine;
@@ -41,10 +42,15 @@ final class PayrollEngine
         private readonly FormulaEngine $formula,
         private readonly TaxEngine $taxEngine,
         private readonly ModifierEngine $modifierEngine,
+        private readonly PayrollAttendanceCalculator $attendanceCalculator,
     ) {
     }
 
-    public function run(Employee $employee, string $period): PayrollResult
+    public function run(
+        Employee $employee,
+        string $period,
+        bool $assumeUnrecordedAttendancePayable = false,
+    ): PayrollResult
     {
         $this->assertPeriod($period);
 
@@ -60,6 +66,14 @@ final class PayrollEngine
         $structure->loadMissing(['lines.component']);
 
         [$start, $end] = $this->periodBoundaries($period);
+        $contractualBase = (float) $structure->base_salary;
+        $attendance = $this->attendanceCalculator->summarize(
+            $employee,
+            $start,
+            $end,
+            $contractualBase,
+            $assumeUnrecordedAttendancePayable,
+        );
 
         $context = new PayrollContext(
             employee: $employee,
@@ -69,7 +83,7 @@ final class PayrollEngine
             period: $period,
             periodStart: $start,
             periodEnd: $end,
-            baseSalary: (float) $structure->base_salary,
+            baseSalary: $attendance['payable_salary'],
             currency: $structure->currency
                 ?? $employee->currency
                 ?? $employee->company->currency
@@ -77,7 +91,10 @@ final class PayrollEngine
         );
 
         $result = new PayrollResult();
-        $this->initialise($context, $result);
+        $result->currency = $context->currency;
+        $result->countryCode = $context->country->code;
+        $result->attendance = $attendance;
+        $this->initialise($context, $result, $attendance);
         $result->trace('pipeline.start', ['period' => $period, 'employee_id' => $employee->id]);
 
         // 1) BASE-stage modifiers (e.g. proration, retro adjustments)
@@ -108,40 +125,64 @@ final class PayrollEngine
         // 8) Final NET-stage modifiers (loans, garnishments, advances repayment)
         $result->setVariable('NET', $result->net);
         $this->modifierEngine->applyForTarget($context, $result, 'NET');
+        $this->taxEngine->applyForStage($context, $result, LegalTax::BASE_NET);
 
         $this->finalise($result);
 
         return $result;
     }
 
-    private function initialise(PayrollContext $context, PayrollResult $result): void
+    /**
+     * @param  array<string, float>  $attendance
+     */
+    private function initialise(PayrollContext $context, PayrollResult $result, array $attendance): void
     {
-        $result->base = $context->baseSalary;
-        $result->gross = $context->baseSalary;
-        $result->taxable = $context->baseSalary;
-        $result->net = $context->baseSalary;
+        $payable = (float) $attendance['payable_salary'];
+        $contractual = (float) $attendance['contractual_salary'];
+        $workingDays = (float) $attendance['working_days'];
+        $payableDays = (float) $attendance['payable_days'];
 
-        $result->variables['BASE_SALARY'] = $context->baseSalary;
+        $result->base = $payable;
+        $result->gross = $payable;
+        $result->taxable = $payable;
+        $result->net = $payable;
+
+        $result->variables['BASE_SALARY'] = $payable;
+        $result->variables['CONTRACTUAL_BASE'] = $contractual;
         $result->variables['BASE'] = $result->base;
         $result->variables['GROSS'] = $result->gross;
         $result->variables['TAXABLE'] = $result->taxable;
         $result->variables['NET'] = $result->net;
+        $result->variables['WORKING_DAYS'] = $workingDays;
+        $result->variables['DAYS_WORKED'] = (float) $attendance['days_worked'];
+        $result->variables['ABSENT_DAYS'] = (float) $attendance['absent_days'];
+        $result->variables['RECORDED_ABSENT_DAYS'] = (float) $attendance['recorded_absent_days'];
+        $result->variables['NO_SHOW_DAYS'] = (float) $attendance['no_show_days'];
+        $result->variables['PENDING_ATTENDANCE_DAYS'] = (float) $attendance['pending_attendance_days'];
+        $result->variables['LEAVE_DAYS'] = (float) $attendance['leave_days'];
+        $result->variables['UNPAID_LEAVE_DAYS'] = (float) $attendance['unpaid_leave_days'];
+        $result->variables['UNPAID_DAYS'] = (float) $attendance['unpaid_days'];
+        $result->variables['PAYABLE_DAYS'] = $payableDays;
+        $result->variables['OVERTIME_HOURS'] = (float) $attendance['overtime_hours'];
+        $result->variables['DAILY_RATE'] = (float) $attendance['daily_rate'];
 
         $result->addLine(new PayrollLineDTO(
             kind: PayrollLine::KIND_COMPONENT,
             code: 'BASE_SALARY',
             label: 'Salaire de base',
             type: PayrollLine::TYPE_EARNING,
-            baseAmount: 0.0,
-            rate: 0.0,
-            amount: $context->baseSalary,
+            baseAmount: $contractual,
+            rate: $workingDays > 0 ? round($payableDays / $workingDays, 4) : 0.0,
+            amount: $payable,
             isTaxable: true,
             affectsGross: true,
             affectsNet: true,
             sequence: 0,
-            meta: ['kind' => 'base_salary'],
+            meta: ['kind' => 'base_salary'] + $attendance,
         ));
-        $result->totalEarnings += $context->baseSalary;
+        $result->totalEarnings += $payable;
+
+        $result->trace('pipeline.attendance', $attendance);
     }
 
     private function processComponents(PayrollContext $context, PayrollResult $result): void
@@ -213,6 +254,14 @@ final class PayrollEngine
     private function processSingleComponent(PayrollResult $result, EmployeeSalaryStructureLine $line): void
     {
         $component = $line->component;
+
+        // Le salaire de base est déjà posé dans initialise() via structure.base_salary.
+        if (strtoupper((string) $component->code) === 'BASE_SALARY') {
+            $result->trace('component.skipped.base_salary', [
+                'component' => $component->code,
+            ]);
+            return;
+        }
 
         $base = match ($component->base_target) {
             'BASE' => $result->base,

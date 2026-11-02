@@ -19,8 +19,7 @@ final class SelfServiceProfileService
     public function __construct(
         private readonly EmployeeProfileLinker $employeeProfiles,
         private readonly AuditLogger $audit,
-    ) {
-    }
+    ) {}
 
     /** @return array<string, mixed> */
     public function showForActor(User $actor): array
@@ -62,8 +61,10 @@ final class SelfServiceProfileService
             $employee->fill([
                 'first_name' => $firstName,
                 'last_name' => $lastName,
-                'phone' => $validated['phone'] ?? $employee->phone,
-                'date_of_birth' => $validated['date_of_birth'] ?? $employee->date_of_birth,
+                'phone' => array_key_exists('phone', $validated) ? $validated['phone'] : $employee->phone,
+                'date_of_birth' => array_key_exists('date_of_birth', $validated)
+                    ? $validated['date_of_birth']
+                    : $employee->date_of_birth,
                 'metadata' => $metadata,
             ])->save();
 

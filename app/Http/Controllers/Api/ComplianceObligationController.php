@@ -28,10 +28,21 @@ class ComplianceObligationController extends Controller
             ? $request->boolean('is_active')
             : null;
 
+        $countryId = $request->integer('country_id') ?: null;
+        $user = $request->user();
+
+        // Tenant : uniquement le référentiel de son pays
+        if ($user && $user->role === 'tenant') {
+            $countryId = $user->company?->country_id
+                ?? \App\Domain\Company\Models\Company::query()
+                    ->whereKey($user->company_id)
+                    ->value('country_id');
+        }
+
         return ComplianceObligationResource::collection(
             $this->service->paginate(
                 (int) $request->query('per_page', 15),
-                $request->integer('country_id') ?: null,
+                $countryId ? (int) $countryId : null,
                 $request->query('type') ?: null,
                 $isActive,
             )

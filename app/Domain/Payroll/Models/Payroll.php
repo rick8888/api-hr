@@ -7,6 +7,7 @@ namespace App\Domain\Payroll\Models;
 use App\Domain\Company\Models\Company;
 use App\Domain\Company\Models\Country;
 use App\Domain\Employee\Models\Employee;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -84,5 +85,10 @@ class Payroll extends Model
     public function lines(): HasMany
     {
         return $this->hasMany(PayrollLine::class)->orderBy('sequence');
+    }
+
+    public function generatedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'generated_by');
     }
 }

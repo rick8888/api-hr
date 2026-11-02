@@ -11,8 +11,11 @@ use Illuminate\Database\Eloquent\Collection;
 
 interface LeaveBalanceRepositoryInterface
 {
-    /** @return Collection<int, Employee> */
-    public function employeesForCompany(int $companyId): Collection;
+    /**
+     * @param  array{employee_ids?: list<int>}  $filters
+     * @return Collection<int, Employee>
+     */
+    public function employeesForCompany(int $companyId, array $filters = []): Collection;
 
     /** @return Collection<int, \App\Domain\Leave\Models\LeaveType> */
     public function activeLeaveTypesForCompany(int $companyId): Collection;

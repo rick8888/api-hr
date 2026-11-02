@@ -13,6 +13,7 @@ use App\Domain\Recruitment\Models\JobOpening;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
@@ -20,6 +21,10 @@ use Illuminate\Support\Collection;
  */
 final class AdminDashboardService
 {
+    public function __construct(
+        private readonly TeamScopeService $teamScope,
+    ) {}
+
     /** @return array<string, mixed> */
     public function showForActor(User $actor, string $period = 'today'): array
     {
@@ -30,23 +35,29 @@ final class AdminDashboardService
         $employees = Employee::query()
             ->where('company_id', $companyId)
             ->where('is_active', true)
+            ->tap(fn ($q) => $this->excludeNonWorkforceProfiles($q, $companyId))
+            ->tap(fn ($q) => $this->teamScope->constrainEmployeeQuery($q, $actor))
             ->get(['id', 'first_name', 'last_name', 'job_title', 'metadata']);
 
         $employeeCount = $employees->count();
         $employeeMap = $employees->keyBy('id');
+        $canViewRecruitment = $actor->hasAnyPermission('organization.manage', 'employees.manage');
 
-        $applicantCount = Candidate::query()
-            ->where('company_id', $companyId)
-            ->count();
+        $applicantCount = 0;
+        $openPositions = 0;
+        if ($canViewRecruitment) {
+            $applicantCount = Candidate::query()->where('company_id', $companyId)->count();
+            $openPositions = JobOpening::query()->where('company_id', $companyId)->where('status', 'open')->count();
+        }
 
-        $openPositions = JobOpening::query()
-            ->where('company_id', $companyId)
-            ->where('status', 'open')
-            ->count();
+        $teamEmployeeIds = $this->teamScope->scopedDirectReportIds($actor);
 
         $todayRecords = AttendanceRecord::query()
             ->with(['employee', 'site'])
             ->where('company_id', $companyId)
+            ->when($teamEmployeeIds !== null, function ($q) use ($teamEmployeeIds) {
+                $q->whereIn('employee_id', $teamEmployeeIds !== [] ? $teamEmployeeIds : [-1]);
+            })
             ->whereDate('attendance_date', $today)
             ->orderBy('check_in')
             ->get();
@@ -57,6 +68,9 @@ final class AdminDashboardService
 
         $yesterdayPresent = AttendanceRecord::query()
             ->where('company_id', $companyId)
+            ->when($teamEmployeeIds !== null, function ($q) use ($teamEmployeeIds) {
+                $q->whereIn('employee_id', $teamEmployeeIds !== [] ? $teamEmployeeIds : [-1]);
+            })
             ->whereDate('attendance_date', $today->copy()->subDay())
             ->whereIn('status', ['on_time', 'late', 'half_day'])
             ->count();
@@ -64,63 +78,83 @@ final class AdminDashboardService
         $employeesLastMonth = Employee::query()
             ->where('company_id', $companyId)
             ->where('is_active', true)
+            ->tap(fn ($q) => $this->excludeNonWorkforceProfiles($q, $companyId))
+            ->tap(fn ($q) => $this->teamScope->constrainEmployeeQuery($q, $actor))
             ->where('created_at', '<', $today->copy()->startOfMonth())
             ->count();
 
-        $applicantsLastMonth = Candidate::query()
-            ->where('company_id', $companyId)
-            ->where('created_at', '<', $today->copy()->startOfMonth())
-            ->count();
+        $applicantsLastMonth = 0;
+        $openPositionsLastMonth = 0;
+        if ($canViewRecruitment) {
+            $applicantsLastMonth = Candidate::query()
+                ->where('company_id', $companyId)
+                ->where('created_at', '<', $today->copy()->startOfMonth())
+                ->count();
+            $openPositionsLastMonth = JobOpening::query()
+                ->where('company_id', $companyId)
+                ->where('status', 'open')
+                ->where('created_at', '<', $today->copy()->startOfMonth())
+                ->count();
+        }
 
-        $openPositionsLastMonth = JobOpening::query()
-            ->where('company_id', $companyId)
-            ->where('status', 'open')
-            ->where('created_at', '<', $today->copy()->startOfMonth())
-            ->count();
+        $kpis = [
+            [
+                'id' => 'employees',
+                'title' => 'Total Employee',
+                'value' => $employeeCount,
+                'change' => $this->changePercent($employeeCount, $employeesLastMonth),
+                'change_direction' => $this->changeDirection($employeeCount, $employeesLastMonth),
+                'update_date' => $today->format('F j, Y'),
+            ],
+        ];
+
+        if ($canViewRecruitment) {
+            $kpis[] = [
+                'id' => 'applicants',
+                'title' => 'Total Applicant',
+                'value' => $applicantCount,
+                'change' => $this->changePercent($applicantCount, $applicantsLastMonth),
+                'change_direction' => $this->changeDirection($applicantCount, $applicantsLastMonth),
+                'update_date' => $today->format('F j, Y'),
+            ];
+        }
+
+        $kpis[] = [
+            'id' => 'attendance',
+            'title' => 'Today Attendance',
+            'value' => $todayPresent,
+            'change' => $this->changePercent($todayPresent, $yesterdayPresent),
+            'change_direction' => $this->changeDirection($todayPresent, $yesterdayPresent),
+            'update_date' => $today->format('F j, Y'),
+        ];
+
+        if ($canViewRecruitment) {
+            $kpis[] = [
+                'id' => 'open_positions',
+                'title' => 'Open Positions',
+                'value' => $openPositions,
+                'change' => $this->changePercent($openPositions, $openPositionsLastMonth),
+                'change_direction' => $this->changeDirection($openPositions, $openPositionsLastMonth),
+                'update_date' => $today->format('F j, Y'),
+            ];
+        }
 
         return [
-            'kpis' => [
-                [
-                    'id' => 'employees',
-                    'title' => 'Total Employee',
-                    'value' => $employeeCount,
-                    'change' => $this->changePercent($employeeCount, $employeesLastMonth),
-                    'change_direction' => $this->changeDirection($employeeCount, $employeesLastMonth),
-                    'update_date' => $today->format('F j, Y'),
-                ],
-                [
-                    'id' => 'applicants',
-                    'title' => 'Total Applicant',
-                    'value' => $applicantCount,
-                    'change' => $this->changePercent($applicantCount, $applicantsLastMonth),
-                    'change_direction' => $this->changeDirection($applicantCount, $applicantsLastMonth),
-                    'update_date' => $today->format('F j, Y'),
-                ],
-                [
-                    'id' => 'attendance',
-                    'title' => 'Today Attendance',
-                    'value' => $todayPresent,
-                    'change' => $this->changePercent($todayPresent, $yesterdayPresent),
-                    'change_direction' => $this->changeDirection($todayPresent, $yesterdayPresent),
-                    'update_date' => $today->format('F j, Y'),
-                ],
-                [
-                    'id' => 'open_positions',
-                    'title' => 'Open Positions',
-                    'value' => $openPositions,
-                    'change' => $this->changePercent($openPositions, $openPositionsLastMonth),
-                    'change_direction' => $this->changeDirection($openPositions, $openPositionsLastMonth),
-                    'update_date' => $today->format('F j, Y'),
-                ],
-            ],
-            'attendance_chart' => $this->buildChart($companyId, $period, $today, max(1, $employeeCount)),
+            'kpis' => $kpis,
+            'attendance_chart' => $this->buildChart(
+                $companyId,
+                $period,
+                $today,
+                max(1, $employeeCount),
+                $teamEmployeeIds,
+            ),
             'attendance_today' => $todayRecords
                 ->take(12)
                 ->map(fn (AttendanceRecord $record) => $this->mapAttendanceRow($record, $employeeMap))
                 ->values()
                 ->all(),
-            'schedule' => $this->buildSchedule($companyId, $today),
-            'schedule_dates' => $this->scheduleHighlightDates($companyId, $today),
+            'schedule' => $this->buildSchedule($companyId, $today, $teamEmployeeIds),
+            'schedule_dates' => $this->scheduleHighlightDates($companyId, $today, $teamEmployeeIds),
         ];
     }
 
@@ -154,10 +188,15 @@ final class AdminDashboardService
     }
 
     /** @return list<array{day: string, present: int, late: int, absent: int}> */
-    private function buildChart(int $companyId, string $period, Carbon $today, int $employeeCount): array
-    {
+    private function buildChart(
+        int $companyId,
+        string $period,
+        Carbon $today,
+        int $employeeCount,
+        ?array $teamEmployeeIds,
+    ): array {
         if ($period === 'today') {
-            return [$this->dayBucket($companyId, $today, 'Today', $employeeCount)];
+            return [$this->dayBucket($companyId, $today, 'Today', $employeeCount, $teamEmployeeIds)];
         }
 
         if ($period === 'week') {
@@ -166,7 +205,7 @@ final class AdminDashboardService
             $bars = [];
             for ($i = 0; $i < 7; $i++) {
                 $day = $start->copy()->addDays($i);
-                $bars[] = $this->dayBucket($companyId, $day, $labels[$i], $employeeCount);
+                $bars[] = $this->dayBucket($companyId, $day, $labels[$i], $employeeCount, $teamEmployeeIds);
             }
 
             return $bars;
@@ -183,7 +222,8 @@ final class AdminDashboardService
                 $from,
                 $to,
                 'Week '.($week + 1),
-                $employeeCount
+                $employeeCount,
+                $teamEmployeeIds,
             );
         }
 
@@ -191,10 +231,18 @@ final class AdminDashboardService
     }
 
     /** @return array{day: string, present: int, late: int, absent: int} */
-    private function dayBucket(int $companyId, Carbon $day, string $label, int $employeeCount): array
-    {
+    private function dayBucket(
+        int $companyId,
+        Carbon $day,
+        string $label,
+        int $employeeCount,
+        ?array $teamEmployeeIds,
+    ): array {
         $records = AttendanceRecord::query()
             ->where('company_id', $companyId)
+            ->when($teamEmployeeIds !== null, function ($q) use ($teamEmployeeIds) {
+                $q->whereIn('employee_id', $teamEmployeeIds !== [] ? $teamEmployeeIds : [-1]);
+            })
             ->whereDate('attendance_date', $day)
             ->get(['status']);
 
@@ -208,9 +256,13 @@ final class AdminDashboardService
         Carbon $to,
         string $label,
         int $employeeCount,
+        ?array $teamEmployeeIds,
     ): array {
         $records = AttendanceRecord::query()
             ->where('company_id', $companyId)
+            ->when($teamEmployeeIds !== null, function ($q) use ($teamEmployeeIds) {
+                $q->whereIn('employee_id', $teamEmployeeIds !== [] ? $teamEmployeeIds : [-1]);
+            })
             ->whereDate('attendance_date', '>=', $from)
             ->whereDate('attendance_date', '<=', $to)
             ->get(['status']);
@@ -256,7 +308,7 @@ final class AdminDashboardService
     }
 
     /** @return list<array{date: string, date_iso: string, events: list<array{time: string, title: string, description: string}>}> */
-    private function buildSchedule(int $companyId, Carbon $today): array
+    private function buildSchedule(int $companyId, Carbon $today, ?array $teamEmployeeIds): array
     {
         $from = $today->copy()->startOfMonth();
         $to = $today->copy()->addDays(14)->endOfDay();
@@ -272,6 +324,9 @@ final class AdminDashboardService
         $leaves = LeaveRequest::query()
             ->with('employee')
             ->where('company_id', $companyId)
+            ->when($teamEmployeeIds !== null, function ($q) use ($teamEmployeeIds) {
+                $q->whereIn('employee_id', $teamEmployeeIds !== [] ? $teamEmployeeIds : [-1]);
+            })
             ->where('status', 'pending')
             ->whereDate('start_date', '>=', $today)
             ->whereDate('start_date', '<=', $to)
@@ -325,7 +380,7 @@ final class AdminDashboardService
     }
 
     /** @return list<string> */
-    private function scheduleHighlightDates(int $companyId, Carbon $today): array
+    private function scheduleHighlightDates(int $companyId, Carbon $today, ?array $teamEmployeeIds): array
     {
         $from = $today->copy()->startOfMonth();
         $to = $today->copy()->endOfMonth()->addMonth();
@@ -340,6 +395,9 @@ final class AdminDashboardService
 
         $leaveDates = LeaveRequest::query()
             ->where('company_id', $companyId)
+            ->when($teamEmployeeIds !== null, function ($q) use ($teamEmployeeIds) {
+                $q->whereIn('employee_id', $teamEmployeeIds !== [] ? $teamEmployeeIds : [-1]);
+            })
             ->where('status', 'pending')
             ->whereDate('start_date', '>=', $from)
             ->whereDate('start_date', '<=', $to)
@@ -347,6 +405,28 @@ final class AdminDashboardService
             ->map(fn ($d) => Carbon::parse($d)->toDateString());
 
         return $holidayDates->merge($leaveDates)->unique()->values()->all();
+    }
+
+    /**
+     * Aligne le KPI sur la liste employés : exclure les comptes tenant
+     * (et fiches liées), qui ne sont pas des employés RH.
+     *
+     * @param  Builder<Employee>  $query
+     */
+    private function excludeNonWorkforceProfiles($query, int $companyId): void
+    {
+        $query
+            ->where(function ($q) {
+                $q->whereNull('metadata->role')
+                    ->orWhere('metadata->role', '<>', 'tenant');
+            })
+            ->whereNotExists(function ($q) use ($companyId) {
+                $q->selectRaw('1')
+                    ->from('users')
+                    ->where('users.company_id', $companyId)
+                    ->where('users.role', 'tenant')
+                    ->whereRaw('LOWER(users.email) = LOWER(employees.email)');
+            });
     }
 
     private function companyId(User $actor): int

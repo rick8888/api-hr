@@ -39,7 +39,7 @@ class UpdateLegalTaxRequest extends FormRequest
                 LegalTax::TYPE_FIXED,
                 LegalTax::TYPE_FORMULA,
             ])],
-            'base_target' => ['sometimes', Rule::in(['BASE', 'GROSS', 'TAXABLE', 'NET', 'CUSTOM'])],
+            'base_target' => ['sometimes', Rule::in(LegalTax::SUPPORTED_BASES)],
             'employer_rate' => ['nullable', 'numeric'],
             'employee_rate' => ['nullable', 'numeric'],
             'ceiling' => ['nullable', 'numeric', 'min:0'],

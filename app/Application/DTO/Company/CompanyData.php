@@ -110,7 +110,8 @@ final class CompanyData
 
         if (isset($data['primary_contact']) && is_array($data['primary_contact'])) {
             $contact = $data['primary_contact'];
-            $contact['role'] = $contact['role'] ?? 'tenant';
+            // Une entreprise n'a qu'un seul tenant : le contact principal.
+            $contact['role'] = 'tenant';
             unset($contact['password']);
             $settings['primary_contact'] = $contact;
         }

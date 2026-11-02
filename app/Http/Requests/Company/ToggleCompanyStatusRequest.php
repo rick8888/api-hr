@@ -10,7 +10,7 @@ class ToggleCompanyStatusRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        return $this->user()?->role === 'super_admin';
     }
 
     /** @return array<string, mixed> */

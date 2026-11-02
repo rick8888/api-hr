@@ -25,6 +25,8 @@ class CompanyController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
+        abort_unless($request->user()?->role === 'super_admin', Response::HTTP_FORBIDDEN);
+
         return CompanyResource::collection(
             $this->service->paginate(
                 (int) $request->query('per_page', 15),
@@ -42,8 +44,10 @@ class CompanyController extends Controller
             ->setStatusCode(Response::HTTP_CREATED);
     }
 
-    public function show(Company $company): CompanyResource
+    public function show(Request $request, Company $company): CompanyResource
     {
+        abort_unless($request->user()?->role === 'super_admin', Response::HTTP_FORBIDDEN);
+
         $company->load('country');
 
         return new CompanyResource($company);
@@ -80,8 +84,10 @@ class CompanyController extends Controller
         return new CompanyResource($updated);
     }
 
-    public function destroy(Company $company): JsonResponse
+    public function destroy(Request $request, Company $company): JsonResponse
     {
+        abort_unless($request->user()?->role === 'super_admin', Response::HTTP_FORBIDDEN);
+
         $this->service->delete($company);
 
         return response()->json(null, Response::HTTP_NO_CONTENT);

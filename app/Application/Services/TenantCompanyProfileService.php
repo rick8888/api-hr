@@ -67,6 +67,7 @@ final class TenantCompanyProfileService
                 'postal_code' => $address['postal_code'] ?? '',
             ],
             'country' => $company->country?->name,
+            'country_id' => $company->country_id,
             'account_status' => $company->is_active ? 'Active' : 'Suspended',
             'member_since' => $this->formatDate($company->created_at),
             'subdomain' => $subdomain.'.opencorebs.com',
@@ -84,11 +85,15 @@ final class TenantCompanyProfileService
             $settings['address'] = $address;
         }
 
-        if (array_key_exists('website', $data)) {
+        if (array_key_exists('website', $data) && ($data['website'] === null || $data['website'] === '')) {
+            unset($settings['website']);
+        } elseif (array_key_exists('website', $data)) {
             $settings['website'] = $data['website'];
         }
 
-        if (array_key_exists('tax_id', $data)) {
+        if (array_key_exists('tax_id', $data) && ($data['tax_id'] === null || $data['tax_id'] === '')) {
+            unset($settings['vat_number']);
+        } elseif (array_key_exists('tax_id', $data)) {
             $settings['vat_number'] = $data['tax_id'];
         }
 
@@ -97,12 +102,13 @@ final class TenantCompanyProfileService
             'name' => $data['name'] ?? $company->name,
             'code' => $company->code,
             'legal_name' => $company->legal_name,
-            'tax_id' => $data['tax_id'] ?? $company->tax_id,
+            'tax_id' => array_key_exists('tax_id', $data) ? $data['tax_id'] : $company->tax_id,
             'registration_number' => $company->registration_number,
             'email' => $company->email,
-            'phone' => $data['phone'] ?? $company->phone,
+            'phone' => array_key_exists('phone', $data) ? $data['phone'] : $company->phone,
             'currency' => $company->currency,
             'is_active' => $company->is_active,
+            'settings' => $settings,
             'subdomain' => $settings['subdomain'] ?? strtolower((string) $company->code),
             'legal_form' => $settings['legal_form'] ?? null,
             'industry' => $settings['industry'] ?? null,

@@ -28,6 +28,9 @@ final class EmployeeActivityService
     private const TITLES = [
         'employee.created' => 'Employee created',
         'employee.updated' => 'Updated employee information',
+        'employee.suspended' => 'Employee suspended',
+        'employee.terminated' => 'Employee terminated',
+        'employee.retired' => 'Employee retired',
         'employee.deleted' => 'Employee deleted',
         'leave_request.created' => 'Leave request submitted',
         'leave_request.updated' => 'Leave request updated',
@@ -138,6 +141,10 @@ final class EmployeeActivityService
 
         if (isset($payload['leave_type'])) {
             $parts[] = (string) $payload['leave_type'];
+        }
+
+        if (isset($payload['reason']) && is_string($payload['reason']) && $payload['reason'] !== '') {
+            $parts[] = $payload['reason'];
         }
 
         if ($actorName) {

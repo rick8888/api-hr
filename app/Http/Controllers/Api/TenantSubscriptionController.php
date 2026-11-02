@@ -77,6 +77,7 @@ class TenantSubscriptionController extends Controller
                 'data' => $this->service->changePlanForActor(
                     $request->user(),
                     $request->validated(),
+                    $request->file('receipt'),
                 ),
             ]);
         } catch (InvalidArgumentException $e) {

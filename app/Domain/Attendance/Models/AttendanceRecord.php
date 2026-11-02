@@ -9,6 +9,7 @@ use App\Domain\Employee\Models\Employee;
 use App\Domain\Organization\Models\Site;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class AttendanceRecord extends Model
@@ -59,5 +60,10 @@ class AttendanceRecord extends Model
     public function site(): BelongsTo
     {
         return $this->belongsTo(Site::class);
+    }
+
+    public function breaks(): HasMany
+    {
+        return $this->hasMany(AttendanceBreak::class);
     }
 }

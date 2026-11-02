@@ -8,6 +8,7 @@ use App\Application\DTO\Company\CompanyData;
 use App\Domain\Company\Models\Company;
 use App\Domain\Company\Repositories\CompanyRepositoryInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 
 final class CompanyService
 {
@@ -15,8 +16,7 @@ final class CompanyService
         private readonly CompanyRepositoryInterface $repository,
         private readonly AuditLogger $audit,
         private readonly TenantContactUserService $tenantContactUser,
-    ) {
-    }
+    ) {}
 
     public function paginate(int $perPage = 15, ?int $countryId = null): LengthAwarePaginator
     {
@@ -30,20 +30,28 @@ final class CompanyService
 
     public function create(CompanyData $data): Company
     {
-        $company = $this->repository->create($data->toModelArray());
-        $company->refresh();
-        $this->tenantContactUser->syncForCompany($company, $data->contactPassword);
-        $this->audit->log('company.created', $company, ['code' => $company->code]);
+        $company = DB::transaction(function () use ($data): Company {
+            $company = $this->repository->create($data->toModelArray());
+            $company->refresh();
+            $this->tenantContactUser->syncForCompany($company, $data->contactPassword);
+            $this->audit->log('company.created', $company, ['code' => $company->code]);
 
-        return $company->load('country');
+            return $company->load('country');
+        });
+
+        return $company;
     }
 
     public function update(Company $company, CompanyData $data): Company
     {
-        $updated = $this->repository->update($company, $data->toModelArray());
-        $updated->refresh();
-        $this->tenantContactUser->syncForCompany($updated, $data->contactPassword);
-        $this->audit->log('company.updated', $updated, ['code' => $updated->code]);
+        $updated = DB::transaction(function () use ($company, $data): Company {
+            $updated = $this->repository->update($company, $data->toModelArray());
+            $updated->refresh();
+            $this->tenantContactUser->syncForCompany($updated, $data->contactPassword);
+            $this->audit->log('company.updated', $updated, ['code' => $updated->code]);
+
+            return $updated;
+        });
 
         return $updated;
     }

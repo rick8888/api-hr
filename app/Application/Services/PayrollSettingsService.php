@@ -6,6 +6,7 @@ namespace App\Application\Services;
 
 use App\Domain\Company\Models\Company;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
@@ -84,6 +85,49 @@ final class PayrollSettingsService
             : StatutoryComponentSyncService::MODE_AUTOMATIC;
     }
 
+    /** @return array<string, mixed> */
+    public static function bag(Company $company): array
+    {
+        $settings = is_array($company->settings) ? $company->settings : [];
+
+        return is_array($settings['payroll'] ?? null) ? $settings['payroll'] : [];
+    }
+
+    public static function isAutoGenerationEnabled(Company $company): bool
+    {
+        $value = self::bag($company)['auto_generation_enabled'] ?? false;
+
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
+     * Période moteur actuelle (YYYY-MM). Les cycles weekly/biweekly restent
+     * mappés au mois calendaire tant que PayrollEngine n'accepte que ce format.
+     */
+    public static function resolvePeriod(Company $company, ?Carbon $now = null): string
+    {
+        unset($company);
+        $now ??= now();
+
+        return $now->format('Y-m');
+    }
+
+    /**
+     * True si le jour courant a atteint (ou dépassé) le jour de fin de période.
+     */
+    public static function isPeriodClosed(Company $company, ?Carbon $now = null): bool
+    {
+        $now ??= now();
+        $daysInMonth = (int) $now->daysInMonth;
+        $endDay = (int) (self::bag($company)['payroll_end_day'] ?? 0);
+        if ($endDay < 1) {
+            $endDay = $daysInMonth;
+        }
+        $endDay = min($endDay, $daysInMonth);
+
+        return $now->day >= $endDay;
+    }
+
     private function resolveCompany(User $actor): Company
     {
         if ($actor->company_id === null || ! in_array($actor->role, ['tenant', 'admin'], true)) {
@@ -135,6 +179,7 @@ final class PayrollSettingsService
             'lop_round_mode' => null,
             'expense_reimbursement_enabled' => null,
             'loan_deductions_enabled' => null,
+            'auto_generation_enabled' => null,
         ];
     }
 
@@ -153,6 +198,7 @@ final class PayrollSettingsService
             'lop_include_holidays',
             'expense_reimbursement_enabled',
             'loan_deductions_enabled',
+            'auto_generation_enabled',
         ];
         $intKeys = [
             'payroll_start_day',

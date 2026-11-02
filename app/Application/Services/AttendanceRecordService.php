@@ -22,8 +22,9 @@ final class AttendanceRecordService
         private readonly AttendanceRecordRepositoryInterface $repository,
         private readonly EmployeeProfileLinker $employeeProfiles,
         private readonly AuditLogger $audit,
-    ) {
-    }
+        private readonly TeamScopeService $teamScope,
+        private readonly AttendanceMetricsCalculator $metrics,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $filters
@@ -35,10 +36,15 @@ final class AttendanceRecordService
         $scoped = $this->applySelfServiceScope($actor, $filters);
 
         if ($scoped === null) {
-            return new Collection();
+            return new Collection;
         }
 
         unset($scoped['mine']);
+
+        $scoped = $this->teamScope->mergeEmployeeListFilters($actor, $scoped);
+        if ($scoped === null) {
+            return new Collection;
+        }
 
         return $this->repository->listByCompany($companyId, $scoped);
     }
@@ -48,6 +54,7 @@ final class AttendanceRecordService
         $this->ensureStaffCanMutate($actor);
         $companyId = $this->companyId($actor);
         $this->validateRelations($companyId, $data);
+        $this->teamScope->ensureManagesEmployeeId($actor, $data->employeeId, $companyId);
 
         return DB::transaction(function () use ($companyId, $data) {
             $payload = $this->withMetrics($data->toModelArray());
@@ -69,6 +76,7 @@ final class AttendanceRecordService
         $this->ensureCompany($record, $companyId);
         $data = AttendanceRecordData::fromArray(array_merge($this->modelArray($record), $validated));
         $this->validateRelations($companyId, $data);
+        $this->teamScope->ensureManagesEmployeeId($actor, $data->employeeId, $companyId);
 
         return DB::transaction(function () use ($record, $data) {
             $updated = $this->repository->update($record, $this->withMetrics($data->toModelArray()));
@@ -83,7 +91,9 @@ final class AttendanceRecordService
     public function deleteForActor(User $actor, AttendanceRecord $record): bool
     {
         $this->ensureStaffCanMutate($actor);
-        $this->ensureCompany($record, $this->companyId($actor));
+        $companyId = $this->companyId($actor);
+        $this->ensureCompany($record, $companyId);
+        $this->teamScope->ensureManagesEmployeeId($actor, (int) $record->employee_id, $companyId);
 
         return DB::transaction(function () use ($record) {
             $this->audit->log('attendance_record.deleted', $record, [
@@ -181,33 +191,8 @@ final class AttendanceRecordService
     private function withMetrics(array $payload): array
     {
         $shift = isset($payload['shift_id']) ? Shift::query()->find($payload['shift_id']) : null;
-        $checkIn = $this->minutes($payload['check_in'] ?? null);
-        $checkOut = $this->minutes($payload['check_out'] ?? null);
-        $shiftStart = $this->minutes($shift?->start_time);
-        $shiftEnd = $this->minutes($shift?->end_time);
 
-        $payload['late_minutes'] = $checkIn !== null && $shiftStart !== null
-            ? max(0, $checkIn - $shiftStart) : 0;
-        $payload['early_out_minutes'] = $checkOut !== null && $shiftEnd !== null
-            ? max(0, $shiftEnd - $checkOut) : 0;
-        $payload['overtime_minutes'] = $checkOut !== null && $shiftEnd !== null
-            ? max(0, $checkOut - $shiftEnd) : 0;
-
-        if ($payload['status'] === 'on_time' && $payload['late_minutes'] > 0) {
-            $payload['status'] = 'late';
-        }
-
-        return $payload;
-    }
-
-    private function minutes(mixed $time): ?int
-    {
-        if ($time === null || $time === '') {
-            return null;
-        }
-        [$hours, $minutes] = array_map('intval', explode(':', substr((string) $time, 0, 5)));
-
-        return $hours * 60 + $minutes;
+        return $this->metrics->calculate($payload, $shift);
     }
 
     /** @return array<string, mixed> */

@@ -23,6 +23,11 @@ final class PayrollResult
     public float $totalDeductions = 0.0;
     public float $totalEmployerCharges = 0.0;
     public float $totalEmployeeCharges = 0.0;
+    public ?string $currency = null;
+    public ?string $countryCode = null;
+
+    /** @var array<string, float|int> */
+    public array $attendance = [];
 
     /** @var array<string, float> Variables exposed to the FormulaEngine */
     public array $variables = [];
@@ -69,6 +74,9 @@ final class PayrollResult
             'lines' => array_map(fn (PayrollLineDTO $l) => $l->toArray(), $this->lines),
             'variables' => $this->variables,
             'audit' => $this->audit,
+            'attendance' => $this->attendance,
+            'currency' => $this->currency,
+            'country_code' => $this->countryCode,
         ];
     }
 }

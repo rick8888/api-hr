@@ -35,6 +35,8 @@ class Invoice extends Model
         'issue_date',
         'due_date',
         'paid_at',
+        'payment_method',
+        'payment_proof_path',
         'period_start',
         'period_end',
         'notes',

@@ -11,6 +11,7 @@ use App\Application\Services\PayrollSettingsService;
 use App\Application\Services\StatutoryComponentSyncService;
 use App\Domain\Payroll\Models\PayrollLine;
 use App\Domain\Tax\Models\LegalTax;
+use App\Engines\Exceptions\PayrollException;
 
 /**
  * TaxEngine
@@ -50,6 +51,7 @@ final class TaxEngine
             return;
         }
 
+        $this->assertSupportedBases($context);
         $taxes = $this->loadTaxes($context, $stage);
 
         foreach ($taxes as $tax) {
@@ -78,12 +80,38 @@ final class TaxEngine
             ->get();
     }
 
+    private function assertSupportedBases(PayrollContext $context): void
+    {
+        $unsupported = LegalTax::query()
+            ->where('country_id', $context->country->id)
+            ->where('is_active', true)
+            ->whereNotIn('base_target', LegalTax::SUPPORTED_BASES)
+            ->whereNull('deleted_at')
+            ->where(function ($q) use ($context) {
+                $q->whereNull('effective_from')->orWhere('effective_from', '<=', $context->periodEnd);
+            })
+            ->where(function ($q) use ($context) {
+                $q->whereNull('effective_to')->orWhere('effective_to', '>=', $context->periodStart);
+            })
+            ->value('base_target');
+
+        if ($unsupported !== null) {
+            throw new PayrollException(
+                "Assiette légale « {$unsupported} » non prise en charge pour la règle de paie."
+            );
+        }
+    }
+
     private function applyTax(PayrollContext $context, PayrollResult $result, LegalTax $tax): void
     {
-        $base = $this->resolveBase($tax->base_target, $result);
+        $rawBase = $this->resolveBase($tax->base_target, $result);
+        $floor = $tax->floor !== null ? (float) $tax->floor : null;
+        $base = $rawBase > 0 && $floor !== null
+            ? max($rawBase, $floor)
+            : $rawBase;
         [$employerRate, $employeeRate, $ceiling] = $this->resolveRates($context, $tax);
 
-        $cappedBase = $ceiling !== null && $ceiling > 0
+        $cappedBase = $ceiling !== null
             ? min($base, (float) $ceiling)
             : $base;
 
@@ -96,6 +124,17 @@ final class TaxEngine
             case LegalTax::TYPE_PROGRESSIVE:
                 $employerAmount = 0.0;
                 $employeeAmount = $this->computeProgressive($tax, $cappedBase);
+                if ($tax->formula !== null && trim($tax->formula) !== '') {
+                    // Progressive rules may adjust their calculated tax using BASE
+                    // and TAX_AMOUNT, e.g. to enforce a statutory cap.
+                    $employeeAmount = $this->formula->evaluate(
+                        $tax->formula,
+                        array_merge($result->variables, [
+                            'BASE' => $cappedBase,
+                            'TAX_AMOUNT' => $employeeAmount,
+                        ]),
+                    );
+                }
                 break;
 
             case LegalTax::TYPE_FIXED:
@@ -143,7 +182,17 @@ final class TaxEngine
                 sourceId: $tax->id,
                 meta: [
                     'tax_type' => $tax->type,
-                    'ceiling_applied' => $ceiling !== null && $base > $ceiling,
+                    'rule_snapshot' => $this->ruleSnapshot(
+                        $context,
+                        $tax,
+                        $rawBase,
+                        $base,
+                        $cappedBase,
+                        $employerRate,
+                        $employeeRate,
+                        $ceiling,
+                        $floor,
+                    ),
                 ],
             ));
             $result->totalEmployerCharges += $employerAmount;
@@ -167,8 +216,18 @@ final class TaxEngine
                 sourceId: $tax->id,
                 meta: [
                     'tax_type' => $tax->type,
-                    'ceiling_applied' => $ceiling !== null && $base > $ceiling,
                     'reduces_taxable' => (bool) $tax->reduces_taxable,
+                    'rule_snapshot' => $this->ruleSnapshot(
+                        $context,
+                        $tax,
+                        $rawBase,
+                        $base,
+                        $cappedBase,
+                        $employerRate,
+                        $employeeRate,
+                        $ceiling,
+                        $floor,
+                    ),
                 ],
             ));
             $result->totalEmployeeCharges += $employeeAmount;
@@ -192,6 +251,17 @@ final class TaxEngine
             'base' => round($cappedBase, 2),
             'employer_amount' => $employerAmount,
             'employee_amount' => $employeeAmount,
+            'rule_snapshot' => $this->ruleSnapshot(
+                $context,
+                $tax,
+                $rawBase,
+                $base,
+                $cappedBase,
+                $employerRate,
+                $employeeRate,
+                $ceiling,
+                $floor,
+            ),
         ]);
     }
 
@@ -202,7 +272,9 @@ final class TaxEngine
             LegalTax::BASE_GROSS => $result->gross,
             LegalTax::BASE_TAXABLE => $result->taxable,
             LegalTax::BASE_NET => $result->net,
-            default => $result->taxable,
+            default => throw new PayrollException(
+                "Assiette légale « {$target} » non prise en charge pour la règle de paie."
+            ),
         };
     }
 
@@ -216,9 +288,19 @@ final class TaxEngine
         $ceiling = $tax->ceiling !== null ? (float) $tax->ceiling : null;
 
         $override = $context->company->companyTaxes
-            ->firstWhere('legal_tax_id', $tax->id);
+            ->first(function ($companyTax) use ($context, $tax): bool {
+                if ((int) $companyTax->legal_tax_id !== (int) $tax->id || ! $companyTax->is_active) {
+                    return false;
+                }
 
-        if ($override !== null && $override->is_active) {
+                $effectiveFrom = optional($companyTax->effective_from)->toDateString();
+                $effectiveTo = optional($companyTax->effective_to)->toDateString();
+
+                return ($effectiveFrom === null || $effectiveFrom <= $context->periodEnd)
+                    && ($effectiveTo === null || $effectiveTo >= $context->periodStart);
+            });
+
+        if ($override !== null) {
             if ($override->override_employer_rate !== null) {
                 $employerRate = (float) $override->override_employer_rate;
             }
@@ -231,6 +313,46 @@ final class TaxEngine
         }
 
         return [$employerRate, $employeeRate, $ceiling];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function ruleSnapshot(
+        PayrollContext $context,
+        LegalTax $tax,
+        float $rawBase,
+        float $base,
+        float $calculatedBase,
+        float $employerRate,
+        float $employeeRate,
+        ?float $ceiling,
+        ?float $floor,
+    ): array {
+        return [
+            'country_code' => $context->country->code,
+            'code' => $tax->code,
+            'type' => $tax->type,
+            'base_target' => $tax->base_target,
+            'raw_base' => round($rawBase, 2),
+            'floor' => $floor,
+            'floor_applied' => $base > $rawBase,
+            'ceiling' => $ceiling,
+            'ceiling_applied' => $calculatedBase < $base,
+            'calculation_base' => round($calculatedBase, 2),
+            'employer_rate' => $employerRate,
+            'employee_rate' => $employeeRate,
+            'progressive_adjustment_formula' => $tax->isProgressive() ? $tax->formula : null,
+            'effective_from' => optional($tax->effective_from)->toDateString(),
+            'effective_to' => optional($tax->effective_to)->toDateString(),
+            'brackets' => $tax->brackets->map(fn ($bracket) => [
+                'min_amount' => (float) $bracket->min_amount,
+                'max_amount' => $bracket->max_amount !== null ? (float) $bracket->max_amount : null,
+                'rate' => (float) $bracket->rate,
+                'fixed_deduction' => (float) $bracket->fixed_deduction,
+                'sequence' => (int) $bracket->sequence,
+            ])->values()->all(),
+        ];
     }
 
     private function computeProgressive(LegalTax $tax, float $base): float

@@ -20,6 +20,17 @@ class Employee extends Model
     use HasFactory;
     use SoftDeletes;
 
+    public const STATUSES = ['active', 'inactive', 'terminated', 'onboarding', 'suspended', 'retired'];
+
+    public const TERMINATION_TYPES = [
+        'resignation',
+        'termination',
+        'contract_end',
+        'redundancy',
+        'retirement',
+        'other',
+    ];
+
     protected $fillable = [
         'company_id',
         'country_id',
@@ -85,6 +96,20 @@ class Employee extends Model
     public function getFullNameAttribute(): string
     {
         return trim("{$this->first_name} {$this->last_name}");
+    }
+
+    public function isSuspended(): bool
+    {
+        $metadata = is_array($this->metadata) ? $this->metadata : [];
+
+        return ($metadata['employment_status'] ?? null) === 'suspended';
+    }
+
+    public function isRetired(): bool
+    {
+        $metadata = is_array($this->metadata) ? $this->metadata : [];
+
+        return ($metadata['employment_status'] ?? null) === 'retired';
     }
 
     public function activeSalaryStructure(?string $period = null): ?EmployeeSalaryStructure

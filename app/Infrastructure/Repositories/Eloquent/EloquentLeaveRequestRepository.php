@@ -35,6 +35,13 @@ final class EloquentLeaveRequestRepository implements LeaveRequestRepositoryInte
         if (! empty($filters['employee_id'])) {
             $query->where('employee_id', (int) $filters['employee_id']);
         }
+        if (! empty($filters['employee_ids']) && is_array($filters['employee_ids'])) {
+            $ids = array_values(array_map('intval', $filters['employee_ids']));
+            if ($ids === []) {
+                return new Collection();
+            }
+            $query->whereIn('employee_id', $ids);
+        }
         if (! empty($filters['designation'])) {
             $query->whereHas('employee', function ($employeeQuery) use ($filters) {
                 $employeeQuery->where('job_title', $filters['designation']);

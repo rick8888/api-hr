@@ -14,11 +14,22 @@ use RuntimeException;
  * Cotisations légales (LegalTax) — données alignées sur front-bravo/src/data/legal-tax/legal-taxes.json
  *
  * Source : database/data/legal-taxes.json
- * Pays : MA (Maroc), CD (RDC)
+ * Pays : MA (Maroc), CD (RDC), CG (Congo), CIV (Côte d'Ivoire), SN (Sénégal)
+ *
+ * Les profils CIV/SN marqués « à valider » sont activés provisoirement ; leurs
+ * règles doivent être confirmées avant tout usage en production.
  */
 class LegalTaxSeeder extends Seeder
 {
     public function run(): void
+    {
+        $this->seedCountries([]);
+    }
+
+    /**
+     * @param list<string> $countryCodes Empty means seed every country in the source file.
+     */
+    public function seedCountries(array $countryCodes): void
     {
         $path = database_path('data/legal-taxes.json');
 
@@ -31,6 +42,10 @@ class LegalTaxSeeder extends Seeder
 
         foreach ($rows as $row) {
             $countryCode = (string) ($row['country_code'] ?? '');
+            if ($countryCodes !== [] && ! in_array($countryCode, $countryCodes, true)) {
+                continue;
+            }
+
             $country = Country::query()->where('code', $countryCode)->first();
 
             if ($country === null) {

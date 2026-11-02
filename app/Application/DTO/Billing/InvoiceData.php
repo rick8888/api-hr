@@ -20,6 +20,7 @@ final class InvoiceData
         public readonly ?string $periodEnd = null,
         public readonly ?string $paidAt = null,
         public readonly ?string $notes = null,
+        public readonly ?string $paymentMethod = null,
     ) {
     }
 
@@ -40,6 +41,7 @@ final class InvoiceData
             'period_start' => $this->periodStart,
             'period_end' => $this->periodEnd,
             'notes' => $this->notes,
+            'payment_method' => $this->paymentMethod,
         ], fn ($v) => $v !== null);
     }
 
@@ -60,6 +62,7 @@ final class InvoiceData
             periodEnd: $data['period_end'] ?? null,
             paidAt: $data['paid_at'] ?? null,
             notes: $data['notes'] ?? null,
+            paymentMethod: $data['payment_method'] ?? null,
         );
     }
 }

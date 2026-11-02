@@ -14,6 +14,7 @@ use App\Http\Requests\Platform\ToggleRoleStatusRequest;
 use App\Http\Requests\Platform\UpdateRoleRequest;
 use App\Http\Resources\RoleResource;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -23,15 +24,25 @@ class RoleController extends Controller
     {
     }
 
-    public function permissionCatalog(): JsonResponse
+    public function permissionCatalog(Request $request): JsonResponse
     {
+        abort_unless(
+            $request->user()?->hasPermission('platform.roles'),
+            Response::HTTP_FORBIDDEN,
+        );
+
         return response()->json([
             'data' => RolePermissionCatalog::all(),
         ]);
     }
 
-    public function index(): AnonymousResourceCollection
+    public function index(Request $request): AnonymousResourceCollection
     {
+        abort_unless(
+            $request->user()?->hasAnyPermission('platform.roles', 'employees.manage', 'employees.view'),
+            Response::HTTP_FORBIDDEN,
+        );
+
         return RoleResource::collection($this->service->list());
     }
 
@@ -44,8 +55,13 @@ class RoleController extends Controller
             ->setStatusCode(Response::HTTP_CREATED);
     }
 
-    public function show(Role $role): RoleResource
+    public function show(Request $request, Role $role): RoleResource
     {
+        abort_unless(
+            $request->user()?->hasAnyPermission('platform.roles', 'employees.manage', 'employees.view'),
+            Response::HTTP_FORBIDDEN,
+        );
+
         return new RoleResource($role);
     }
 
@@ -65,8 +81,13 @@ class RoleController extends Controller
         return new RoleResource($updated);
     }
 
-    public function destroy(Role $role): JsonResponse
+    public function destroy(Request $request, Role $role): JsonResponse
     {
+        abort_unless(
+            $request->user()?->hasPermission('platform.roles'),
+            Response::HTTP_FORBIDDEN,
+        );
+
         $this->service->delete($role);
 
         return response()->json(null, Response::HTTP_NO_CONTENT);

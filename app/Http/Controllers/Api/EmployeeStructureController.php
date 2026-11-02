@@ -11,17 +11,19 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Structure\AssignStructureRequest;
 use App\Http\Resources\EmployeeSalaryStructureResource;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Gate;
 use Symfony\Component\HttpFoundation\Response;
 
 class EmployeeStructureController extends Controller
 {
-    public function __construct(private readonly EmployeeSalaryStructureService $service)
-    {
-    }
+    public function __construct(private readonly EmployeeSalaryStructureService $service) {}
 
-    public function index(Employee $employee): AnonymousResourceCollection
+    public function index(Request $request, Employee $employee): AnonymousResourceCollection
     {
+        Gate::forUser($request->user())->authorize('view', $employee);
+
         return EmployeeSalaryStructureResource::collection(
             $this->service->listForEmployee($employee->id)
         );
@@ -29,6 +31,7 @@ class EmployeeStructureController extends Controller
 
     public function store(AssignStructureRequest $request, Employee $employee): JsonResponse
     {
+        Gate::forUser($request->user())->authorize('update', $employee);
         $payload = $request->validated();
         $payload['employee_id'] = $employee->id;
 

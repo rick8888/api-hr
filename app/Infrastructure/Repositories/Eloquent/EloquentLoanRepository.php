@@ -51,7 +51,7 @@ final class EloquentLoanRepository implements LoanRepositoryInterface
         $last = Loan::query()
             ->withTrashed()
             ->where('company_id', $companyId)
-            ->where('code', 'like', $prefix.'%')
+            ->where('code', 'like', $prefix . '%')
             ->orderByDesc('id')
             ->value('code');
 
@@ -60,7 +60,7 @@ final class EloquentLoanRepository implements LoanRepositoryInterface
             $seq = ((int) $m[1]) + 1;
         }
 
-        return $prefix.str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
+        return $prefix . str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
     }
 
     public function create(array $data): Loan

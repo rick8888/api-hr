@@ -14,6 +14,8 @@ use App\Http\Resources\InvoiceResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Http\Response as HttpResponse;
+use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
 
 class InvoiceController extends Controller
@@ -68,5 +70,19 @@ class InvoiceController extends Controller
         $settled = $this->service->settle($invoice);
 
         return new InvoiceResource($settled);
+    }
+
+    public function paymentProof(Invoice $invoice): HttpResponse
+    {
+        abort_unless($invoice->payment_proof_path, Response::HTTP_NOT_FOUND);
+
+        $disk = Storage::disk('local');
+        abort_unless($disk->exists($invoice->payment_proof_path), Response::HTTP_NOT_FOUND);
+
+        return $disk->response(
+            $invoice->payment_proof_path,
+            basename($invoice->payment_proof_path),
+            ['Content-Disposition' => 'inline'],
+        );
     }
 }

@@ -11,7 +11,7 @@ class UpdateCompanyRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        return $this->user()?->role === 'super_admin';
     }
 
     /** @return array<string, mixed> */
@@ -59,7 +59,7 @@ class UpdateCompanyRequest extends FormRequest
             'primary_contact.phone' => ['nullable', 'string', 'max:40'],
             'primary_contact.mobile' => ['nullable', 'string', 'max:40'],
             'primary_contact.language' => ['nullable', 'string', 'max:5'],
-            'primary_contact.role' => ['nullable', 'string', 'in:super_admin,admin,tenant,employe,team_manager'],
+            'primary_contact.role' => ['nullable', 'string', 'in:tenant'],
             'primary_contact.password' => ['nullable', 'string', 'min:8'],
         ];
     }

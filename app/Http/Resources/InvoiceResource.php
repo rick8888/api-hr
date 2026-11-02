@@ -27,6 +27,11 @@ class InvoiceResource extends JsonResource
             'issue_date' => optional($this->issue_date)->toDateString(),
             'due_date' => optional($this->due_date)->toDateString(),
             'paid_at' => optional($this->paid_at)->toDateString(),
+            'payment_method' => $this->payment_method,
+            'has_payment_proof' => (bool) $this->payment_proof_path,
+            'payment_proof_url' => $this->payment_proof_path
+                ? route('invoices.payment-proof', ['invoice' => $this->id])
+                : null,
             'period_start' => optional($this->period_start)->toDateString(),
             'period_end' => optional($this->period_end)->toDateString(),
             'notes' => $this->notes,

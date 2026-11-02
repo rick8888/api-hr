@@ -36,7 +36,7 @@ class UpdateLeaveRequestRequest extends FormRequest
             ],
             'duration_kind' => ['sometimes', 'string', Rule::in(LeaveRequest::DURATION_KINDS)],
             'start_date' => ['sometimes', 'date'],
-            'end_date' => ['sometimes', 'date', 'after_or_equal:start_date'],
+            'end_date' => ['sometimes', 'date'],
             'total_days' => ['sometimes', 'numeric', 'min:0.5', 'max:365'],
             'reason' => ['sometimes', 'string', 'max:2000'],
             'emergency_contact' => ['sometimes', 'boolean'],

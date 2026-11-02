@@ -18,6 +18,7 @@ final class LeaveBalanceService
     public function __construct(
         private readonly LeaveBalanceRepositoryInterface $repository,
         private readonly EmployeeProfileLinker $employeeProfiles,
+        private readonly TeamScopeService $teamScope,
         private readonly AuditLogger $audit,
     ) {
     }
@@ -26,13 +27,21 @@ final class LeaveBalanceService
     public function listForActor(User $actor, int $year, bool $mine = false): array
     {
         $companyId = $this->resolveCompanyId($actor, write: false);
-        $employees = $this->repository->employeesForCompany($companyId);
 
+        $employeeFilters = [];
         if ($this->isSelfServiceActor($actor) || $mine) {
             $self = $this->resolveEmployeeForActor($actor);
-            $employees = $self ? $employees->where('id', $self->id)->values() : $employees->take(0);
+            $employeeFilters['employee_ids'] = $self ? [(int) $self->id] : [];
+        } else {
+            $scoped = $this->teamScope->mergeEmployeeListFilters($actor, []);
+            if ($scoped === null) {
+                $employeeFilters['employee_ids'] = [];
+            } elseif (! empty($scoped['employee_ids']) && is_array($scoped['employee_ids'])) {
+                $employeeFilters['employee_ids'] = array_values(array_map('intval', $scoped['employee_ids']));
+            }
         }
 
+        $employees = $this->repository->employeesForCompany($companyId, $employeeFilters);
         $leaveTypes = $this->repository->activeLeaveTypesForCompany($companyId);
         $balances = $this->repository->balancesForCompanyAndYear($companyId, $year)
             ->keyBy(fn (LeaveBalance $balance) => $balance->employee_id.'|'.$balance->leave_type_id);
@@ -40,9 +49,10 @@ final class LeaveBalanceService
 
         return [
             'year' => $year,
-            'leave_types' => $leaveTypes->map(fn (LeaveType $type) => $this->typePayload($type))->values(),
+            'leave_types' => $leaveTypes->map(fn (LeaveType $type) => $this->typePayload($type))->values()->all(),
             'employees' => $employees->map(function (Employee $employee) use ($leaveTypes, $balances, $used) {
                 $employeeBalances = [];
+                $metadata = is_array($employee->metadata) ? $employee->metadata : [];
 
                 foreach ($leaveTypes as $type) {
                     $balance = $balances->get($employee->id.'|'.$type->id);
@@ -54,11 +64,14 @@ final class LeaveBalanceService
                     'id' => $employee->id,
                     'employee' => $employee->full_name,
                     'employee_code' => $employee->matricule,
-                    'designation' => $employee->job_title ?: '-',
-                    'team' => $employee->department ?: '-',
+                    'designation' => $metadata['designation'] ?? ($employee->job_title ?: '-'),
+                    'team' => $metadata['team'] ?? ($employee->department ?: '-'),
+                    'department' => $employee->department ?: '-',
+                    'is_active' => (bool) $employee->is_active,
+                    'status' => $this->resolveEmployeeStatus($employee),
                     'balances' => $employeeBalances,
                 ];
-            })->values(),
+            })->values()->all(),
         ];
     }
 
@@ -68,11 +81,13 @@ final class LeaveBalanceService
         $companyId = $this->resolveCompanyId($actor, write: false);
         $this->ensureSelfServiceCanAccessCode($actor, $employeeCode);
         $employee = $this->findEmployee($companyId, $employeeCode);
+        $this->teamScope->ensureManages($actor, $employee);
         $leaveTypes = $this->repository->activeLeaveTypesForCompany($companyId);
         $balances = $this->repository->balancesForEmployeeAndYear($companyId, $employee->id, $year)
             ->keyBy('leave_type_id');
         $used = $this->repository->usedDaysForCompanyAndYear($companyId, $year);
         $adjustments = $this->repository->adjustmentsForEmployeeAndYear($companyId, $employee->id, $year);
+        $metadata = is_array($employee->metadata) ? $employee->metadata : [];
 
         return [
             'year' => $year,
@@ -80,16 +95,19 @@ final class LeaveBalanceService
                 'id' => $employee->id,
                 'employee' => $employee->full_name,
                 'employee_code' => $employee->matricule,
-                'designation' => $employee->job_title ?: '-',
-                'team' => $employee->department ?: '-',
+                'designation' => $metadata['designation'] ?? ($employee->job_title ?: '-'),
+                'team' => $metadata['team'] ?? ($employee->department ?: '-'),
+                'department' => $employee->department ?: '-',
                 'email' => $employee->email,
+                'is_active' => (bool) $employee->is_active,
+                'status' => $this->resolveEmployeeStatus($employee),
             ],
             'balances' => $leaveTypes->map(function (LeaveType $type) use ($employee, $balances, $used) {
                 $balance = $balances->get($type->id);
                 $usedDays = $used[$employee->id.'|'.strtoupper($type->code)] ?? 0.0;
 
                 return array_merge($this->typePayload($type), $this->balancePayload($balance, $usedDays));
-            })->values(),
+            })->values()->all(),
             'adjustments' => $adjustments->map(fn ($adjustment) => [
                 'id' => $adjustment->id,
                 'date' => $adjustment->created_at?->toIso8601String(),
@@ -100,7 +118,7 @@ final class LeaveBalanceService
                 'balance_after' => (float) $adjustment->balance_after,
                 'reason' => $adjustment->reason,
                 'adjusted_by' => $adjustment->adjustedBy?->name ?? 'System',
-            ])->values(),
+            ])->values()->all(),
         ];
     }
 
@@ -115,6 +133,7 @@ final class LeaveBalanceService
     ): array {
         $companyId = $this->resolveCompanyId($actor, write: true);
         $employee = $this->findEmployee($companyId, $employeeCode);
+        $this->teamScope->ensureManages($actor, $employee);
 
         if ($leaveType->company_id !== $companyId || ! $leaveType->is_active) {
             throw ValidationException::withMessages(['leave_type_id' => 'Type de congé invalide.']);
@@ -230,5 +249,22 @@ final class LeaveBalanceService
             'used' => $used,
             'available' => $entitled + $carriedForward + $additional - $used,
         ];
+    }
+
+    private function resolveEmployeeStatus(Employee $employee): string
+    {
+        if ($employee->terminated_at !== null) {
+            return 'terminated';
+        }
+
+        if ($employee->isSuspended()) {
+            return 'suspended';
+        }
+
+        if ($employee->isRetired()) {
+            return 'retired';
+        }
+
+        return $employee->is_active ? 'active' : 'inactive';
     }
 }

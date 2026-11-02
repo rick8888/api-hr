@@ -34,7 +34,12 @@ class PayrollResource extends JsonResource
                 'total_employee_charges' => (float) $this->total_employee_charges,
             ],
             'summary' => $this->summary,
+            'snapshot' => $this->snapshot,
             'generated_at' => optional($this->generated_at)->toIso8601String(),
+            'generated_by' => $this->generated_by,
+            'created_at' => optional($this->created_at)->toIso8601String(),
+            'updated_at' => optional($this->updated_at)->toIso8601String(),
+            'workflow' => is_array($this->snapshot) ? ($this->snapshot['workflow'] ?? null) : null,
             'lines' => $this->whenLoaded('lines', function () {
                 return $this->lines->map(fn ($line) => [
                     'id' => $line->id,

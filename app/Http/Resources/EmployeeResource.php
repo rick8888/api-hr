@@ -29,7 +29,8 @@ class EmployeeResource extends JsonResource
             'phone' => $this->phone,
             'date_of_birth' => optional($this->date_of_birth)->toDateString(),
             'job_title' => $this->job_title,
-            'role' => $metadata['role'] ?? $this->job_title,
+            'account_role' => $metadata['role'] ?? null,
+            'role' => $metadata['role'] ?? null,
             'department' => $this->department,
             'team' => $metadata['team'] ?? null,
             'designation' => $metadata['designation'] ?? $this->job_title,
@@ -41,6 +42,11 @@ class EmployeeResource extends JsonResource
             'attendanceType' => $metadata['attendance_type'] ?? null,
             'qr_group' => $metadata['qr_group'] ?? null,
             'qrGroup' => $metadata['qr_group'] ?? null,
+            'probation_months' => (int) ($metadata['probation_months'] ?? 0),
+            'probationMonths' => (int) ($metadata['probation_months'] ?? 0),
+            'probation_end_date' => $metadata['probation_end_date'] ?? null,
+            'probationEndDate' => $metadata['probation_end_date'] ?? null,
+            'probation_notes' => $metadata['probation_notes'] ?? null,
             'contract_type' => $this->contract_type,
             'base_salary' => (float) $this->base_salary,
             'currency' => $this->currency,
@@ -51,6 +57,8 @@ class EmployeeResource extends JsonResource
             'is_active' => (bool) $this->is_active,
             'active' => (bool) $this->is_active,
             'status' => $status,
+            'suspension' => is_array($metadata['suspension'] ?? null) ? $metadata['suspension'] : null,
+            'termination' => is_array($metadata['termination'] ?? null) ? $metadata['termination'] : null,
             'created_at' => optional($this->created_at)->toIso8601String(),
             'updated_at' => optional($this->updated_at)->toIso8601String(),
         ];
@@ -60,6 +68,14 @@ class EmployeeResource extends JsonResource
     {
         if ($this->terminated_at !== null) {
             return 'terminated';
+        }
+
+        if ($this->isSuspended()) {
+            return 'suspended';
+        }
+
+        if ($this->isRetired()) {
+            return 'retired';
         }
 
         return $this->is_active ? 'active' : 'inactive';

@@ -41,6 +41,7 @@ class UpdatePayrollSettingsRequest extends FormRequest
             'lop_round_mode' => ['sometimes', 'string', Rule::in(['none', 'half', 'whole'])],
             'expense_reimbursement_enabled' => ['sometimes', 'boolean'],
             'loan_deductions_enabled' => ['sometimes', 'boolean'],
+            'auto_generation_enabled' => ['sometimes', 'boolean'],
         ];
     }
 }

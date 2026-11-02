@@ -8,15 +8,20 @@ use App\Application\DTO\Billing\InvoiceData;
 use App\Domain\Billing\Models\Invoice;
 use App\Domain\Billing\Models\PaymentMethod;
 use App\Domain\Company\Models\Company;
-use App\Domain\Employee\Models\Employee;
 use App\Domain\Subscription\Models\Subscription;
 use App\Domain\Subscription\Models\SubscriptionPlan;
 use App\Models\User;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
+use RuntimeException;
+use Throwable;
 
 final class TenantSubscriptionService
 {
@@ -30,9 +35,10 @@ final class TenantSubscriptionService
         'free' => 'free',
     ];
 
-    public function __construct(private readonly InvoiceService $invoiceService)
-    {
-    }
+    public function __construct(
+        private readonly InvoiceService $invoiceService,
+        private readonly TenantPlanQuotaService $planQuotas,
+    ) {}
 
     /** @return array{current: array<string, mixed>, plans: array<int, array<string, mixed>>, history: array<int, array<string, mixed>>} */
     public function cancelForActor(User $actor): array
@@ -55,16 +61,35 @@ final class TenantSubscriptionService
     }
 
     /**
-     * Demande de changement de plan + paiement (mobile money simulé).
+     * Création d'une demande de changement de plan avec paiement manuel.
      *
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
-    public function changePlanForActor(User $actor, array $payload): array
+    public function changePlanForActor(User $actor, array $payload, ?UploadedFile $receipt = null): array
     {
         $company = $this->resolveCompany($actor);
         $planCode = trim((string) ($payload['plan_code'] ?? ''));
         $paymentMethod = (string) ($payload['payment_method'] ?? '');
+        if (! in_array($paymentMethod, [
+            PaymentMethod::CODE_BANK_TRANSFER,
+            PaymentMethod::CODE_MOBILE_MONEY,
+            PaymentMethod::CODE_CASH,
+        ], true)) {
+            throw new InvalidArgumentException('Selected payment method is not available.');
+        }
+
+        if ($paymentMethod === PaymentMethod::CODE_BANK_TRANSFER && $receipt === null) {
+            throw new InvalidArgumentException('A bank transfer receipt is required.');
+        }
+
+        if ($paymentMethod === PaymentMethod::CODE_CASH && $receipt !== null) {
+            throw new InvalidArgumentException('Cash payment requests do not accept a receipt upload.');
+        }
+
+        if ($paymentMethod === PaymentMethod::CODE_MOBILE_MONEY && $receipt !== null) {
+            throw new InvalidArgumentException('Mobile money requests do not accept a receipt upload.');
+        }
 
         $newPlan = SubscriptionPlan::query()
             ->where('is_active', true)
@@ -85,7 +110,6 @@ final class TenantSubscriptionService
             throw new InvalidArgumentException('You are already on this plan.');
         }
 
-        $isMobileMoney = $paymentMethod === PaymentMethod::CODE_MOBILE_MONEY;
         $amount = (float) $newPlan->price_monthly;
         $currency = strtoupper((string) ($newPlan->currency ?: $company->currency ?: 'USD'));
         $today = now()->toDateString();
@@ -97,78 +121,71 @@ final class TenantSubscriptionService
 
         $notes = $this->buildPaymentNotes($payload, $paymentMethod);
 
-        return DB::transaction(function () use (
-            $actor,
-            $company,
-            $newPlan,
-            $paymentMethod,
-            $isMobileMoney,
-            $amount,
-            $currency,
-            $today,
-            $periodEnd,
-            $description,
-            $notes,
-            $payload,
-        ) {
-            $invoice = $this->invoiceService->create(InvoiceData::fromArray([
-                'company_id' => $company->id,
-                'plan_code' => $newPlan->code,
-                'description' => $description,
-                'amount' => $amount,
-                'currency' => $currency,
-                'status' => Invoice::STATUS_PENDING,
-                'issue_date' => $today,
-                'due_date' => $today,
-                'period_start' => $today,
-                'period_end' => $periodEnd,
-                'notes' => $notes,
-            ]));
+        $proofPath = null;
+        try {
+            return DB::transaction(function () use (
+                $actor,
+                $company,
+                $newPlan,
+                $paymentMethod,
+                $amount,
+                $currency,
+                $today,
+                $periodEnd,
+                $description,
+                $notes,
+                $receipt,
+                &$proofPath,
+            ) {
+                $invoice = $this->invoiceService->create(InvoiceData::fromArray([
+                    'company_id' => $company->id,
+                    'plan_code' => $newPlan->code,
+                    'description' => $description,
+                    'amount' => $amount,
+                    'currency' => $currency,
+                    'status' => Invoice::STATUS_PENDING,
+                    'issue_date' => $today,
+                    'due_date' => $today,
+                    'period_start' => $today,
+                    'period_end' => $periodEnd,
+                    'payment_method' => $paymentMethod,
+                    'notes' => $notes,
+                ]));
 
-            $status = 'pending_approval';
-            $message = match ($paymentMethod) {
-                PaymentMethod::CODE_BANK_TRANSFER => 'Bank transfer recorded. Your receipt will be verified within 24–48 hours.',
-                PaymentMethod::CODE_CASH => 'Cash payment recorded. Our team will confirm receipt.',
-                default => 'Payment request submitted and awaiting approval.',
-            };
+                if ($receipt !== null) {
+                    $storedPath = $receipt->store(
+                        'subscription-payment-proofs/'.$company->id,
+                        'local',
+                    );
+                    if (! is_string($storedPath)) {
+                        throw new RuntimeException('Unable to store the bank transfer receipt.');
+                    }
 
-            if ($isMobileMoney) {
-                // Simulation temporaire — à remplacer par un vrai PSP mobile money.
-                // recordPayment déclenche l'activation via plan_code dès que la facture est paid.
-                if ($amount > 0.001) {
-                    $this->invoiceService->recordPayment($invoice, [
-                        'amount' => $amount,
-                        'method' => PaymentMethod::CODE_MOBILE_MONEY,
-                        'reference' => 'SIM-MM-'.strtoupper((string) ($payload['mobile_operator'] ?? 'MOBILE')),
-                        'notes' => 'Simulated mobile money payment ('.$payload['phone_number'].')',
-                        'paid_at' => $today,
-                    ]);
-                } else {
-                    $invoice->update([
-                        'status' => Invoice::STATUS_PAID,
-                        'amount_paid' => 0,
-                        'paid_at' => $today,
-                    ]);
-                    $this->activateForCompany($company, $newPlan, $today, $periodEnd);
+                    $proofPath = $storedPath;
+                    $invoice->update(['payment_proof_path' => $proofPath]);
                 }
 
-                $status = 'completed';
-                $operator = (string) ($payload['mobile_operator'] ?? 'mobile money');
-                $phone = (string) ($payload['phone_number'] ?? '');
-                $message = 'Mobile payment simulated successfully via '.$operator
-                    .($phone !== '' ? ' ('.$phone.')' : '')
-                    .'. Your plan has been updated.';
+                return [
+                    'status' => 'pending_approval',
+                    'message' => match ($paymentMethod) {
+                        PaymentMethod::CODE_BANK_TRANSFER => 'Transfer request and receipt submitted. The payment will be verified before your plan is activated.',
+                        PaymentMethod::CODE_MOBILE_MONEY => 'Mobile money payment request submitted. Our team will verify the payment before activating your plan.',
+                        default => 'Cash payment request submitted. The plan will be activated after the team confirms receipt.',
+                    },
+                    'payment_method' => $paymentMethod,
+                    'simulation' => false,
+                    'invoice_id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'subscription' => $this->getForActor($actor),
+                ];
+            });
+        } catch (Throwable $exception) {
+            if ($proofPath !== null) {
+                Storage::disk('local')->delete($proofPath);
             }
 
-            return [
-                'status' => $status,
-                'message' => $message,
-                'payment_method' => $paymentMethod,
-                'simulation' => $isMobileMoney,
-                'invoice_id' => $invoice->id,
-                'subscription' => $this->getForActor($actor),
-            ];
-        });
+            throw $exception;
+        }
     }
 
     /** @param array<string, mixed> $payload */
@@ -176,18 +193,17 @@ final class TenantSubscriptionService
     {
         $parts = ['Payment method: '.$paymentMethod];
 
-        if ($paymentMethod === PaymentMethod::CODE_MOBILE_MONEY) {
-            $parts[] = 'Operator: '.($payload['mobile_operator'] ?? '—');
-            $parts[] = 'Phone: '.($payload['phone_number'] ?? '—');
-            $parts[] = 'Mode: simulated';
-        }
-
         if ($paymentMethod === PaymentMethod::CODE_CASH && ! empty($payload['reference'])) {
             $parts[] = 'Reference: '.$payload['reference'];
         }
 
-        if ($paymentMethod === PaymentMethod::CODE_BANK_TRANSFER && ! empty($payload['receipt']['name'])) {
-            $parts[] = 'Receipt: '.$payload['receipt']['name'];
+        if ($paymentMethod === PaymentMethod::CODE_BANK_TRANSFER && ! empty($payload['reference'])) {
+            $parts[] = 'Transfer reference: '.$payload['reference'];
+        }
+
+        if ($paymentMethod === PaymentMethod::CODE_MOBILE_MONEY) {
+            $parts[] = 'Operator: '.($payload['mobile_operator'] ?? '—');
+            $parts[] = 'Phone: '.($payload['phone_number'] ?? '—');
         }
 
         return implode(' | ', $parts);
@@ -469,9 +485,7 @@ final class TenantSubscriptionService
             default => $company->is_active ? 'Active' : 'Suspended',
         };
 
-        $usersCount = User::query()
-            ->where('company_id', $company->id)
-            ->count();
+        $usersCount = $this->planQuotas->usersUsed((int) $company->id);
 
         $nextPaymentAmount = $pendingInvoice !== null
             ? $this->formatPrice((float) $pendingInvoice->amount, $pendingInvoice->currency)
@@ -487,7 +501,7 @@ final class TenantSubscriptionService
         $usersAllowed = $plan?->max_users;
 
         return [
-            'product_name' => 'Open Core BS SaaS',
+            'product_name' => 'Bravo RH',
             'first_name' => $firstName,
             'application_url' => 'https://'.$subdomain.'.opencorebs.com',
             'current_plan' => $plan?->name ?? (string) ($settings['plan'] ?? '—'),
@@ -529,14 +543,8 @@ final class TenantSubscriptionService
             ?? $pendingInvoice?->due_date
             ?? $invoices->first()?->period_end;
 
-        $usersUsed = User::query()
-            ->where('company_id', $company->id)
-            ->count();
-
-        $employeesUsed = Employee::query()
-            ->where('company_id', $company->id)
-            ->where('is_active', true)
-            ->count();
+        $usersUsed = $this->planQuotas->usersUsed((int) $company->id);
+        $employeesUsed = $this->planQuotas->employeesUsed((int) $company->id);
 
         // Stockage réel non encore instrumenté (pas de taille fichier en base).
         $storageUsedGb = 0.0;
@@ -670,12 +678,12 @@ final class TenantSubscriptionService
     /**
      * Génère le PDF d'une facture tenant.
      */
-    public function downloadInvoicePdfForActor(User $actor, int $invoiceId): \Illuminate\Http\Response
+    public function downloadInvoicePdfForActor(User $actor, int $invoiceId): Response
     {
         $data = $this->invoiceForActor($actor, $invoiceId);
         $filename = preg_replace('/[^A-Za-z0-9._-]/', '_', (string) ($data['invoice_number'] ?? 'invoice-'.$invoiceId)).'.pdf';
 
-        return \Barryvdh\DomPDF\Facade\Pdf::loadView('invoices.tenant-invoice', [
+        return Pdf::loadView('invoices.tenant-invoice', [
             'invoice' => $data,
         ])
             ->setPaper('a4')
@@ -744,7 +752,7 @@ final class TenantSubscriptionService
     }
 
     /**
-     * @param Collection<string, SubscriptionPlan> $plansByCode
+     * @param  Collection<string, SubscriptionPlan>  $plansByCode
      * @return array<string, mixed>
      */
     private function formatTenantPayment(Invoice $invoice, Collection $plansByCode): array
@@ -760,6 +768,7 @@ final class TenantSubscriptionService
             'amount' => $base['amount'],
             'amount_value' => $base['amount_value'],
             'currency' => $base['currency'],
+            'payment_method' => $invoice->payment_method,
             'status' => $this->mapBillingStatus($invoice->status),
             'status_code' => $invoice->status,
             'invoice_number' => $invoice->invoice_number,
@@ -778,7 +787,7 @@ final class TenantSubscriptionService
     }
 
     /**
-     * @param Collection<string, SubscriptionPlan> $plansByCode
+     * @param  Collection<string, SubscriptionPlan>  $plansByCode
      * @return array<string, mixed>
      */
     private function formatTenantInvoice(Invoice $invoice, Collection $plansByCode): array
@@ -803,12 +812,13 @@ final class TenantSubscriptionService
             'currency' => $invoice->currency,
             'status' => $this->mapHistoryStatus($invoice->status),
             'status_code' => $invoice->status,
+            'payment_method' => $invoice->payment_method,
             'pdf_url' => null,
         ];
     }
 
     /**
-     * @param Collection<string, SubscriptionPlan> $plansByCode
+     * @param  Collection<string, SubscriptionPlan>  $plansByCode
      * @return array<string, mixed>
      */
     private function formatTenantInvoiceDetail(
@@ -941,28 +951,7 @@ final class TenantSubscriptionService
 
     private function resolveCurrentPlan(Company $company): ?SubscriptionPlan
     {
-        $settings = is_array($company->settings) ? $company->settings : [];
-        $planKey = trim((string) ($settings['plan'] ?? ''));
-
-        if ($planKey === '') {
-            return SubscriptionPlan::query()
-                ->where('is_active', true)
-                ->orderBy('sort_order')
-                ->first();
-        }
-
-        $normalized = strtolower($planKey);
-        $code = self::PLAN_ALIASES[$normalized] ?? $normalized;
-
-        return SubscriptionPlan::query()
-            ->where('is_active', true)
-            ->where(function ($query) use ($planKey, $normalized, $code) {
-                $query->where('code', $code)
-                    ->orWhere('code', $normalized)
-                    ->orWhere('name', $planKey)
-                    ->orWhereRaw('LOWER(name) = ?', [$normalized]);
-            })
-            ->first();
+        return $this->planQuotas->planForCompany($company);
     }
 
     /** @param Collection<int, Invoice> $invoices */

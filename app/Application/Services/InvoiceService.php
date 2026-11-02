@@ -12,6 +12,7 @@ use App\Domain\Billing\Repositories\InvoiceRepositoryInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
 
 final class InvoiceService
@@ -95,11 +96,18 @@ final class InvoiceService
 
     public function delete(Invoice $invoice): bool
     {
-        return DB::transaction(function () use ($invoice) {
+        $proofPath = $invoice->payment_proof_path;
+        $deleted = DB::transaction(function () use ($invoice) {
             $this->audit->log('invoice.deleted', $invoice, ['invoice_number' => $invoice->invoice_number]);
 
             return $this->invoiceRepository->delete($invoice);
         });
+
+        if ($deleted && $proofPath !== null) {
+            Storage::disk('local')->delete($proofPath);
+        }
+
+        return $deleted;
     }
 
     /** @param array<string, mixed> $data */
@@ -165,7 +173,13 @@ final class InvoiceService
 
         $result = $this->recordPayment($invoice, [
             'amount' => $balance,
-            'method' => InvoicePayment::METHOD_BANK_TRANSFER,
+            'method' => in_array($invoice->payment_method, [
+                InvoicePayment::METHOD_BANK_TRANSFER,
+                InvoicePayment::METHOD_CASH,
+                InvoicePayment::METHOD_MOBILE_MONEY,
+            ], true)
+                ? $invoice->payment_method
+                : InvoicePayment::METHOD_BANK_TRANSFER,
             'reference' => 'SOLDE',
             'notes' => 'Paiement du solde restant',
             'paid_at' => now()->toDateString(),

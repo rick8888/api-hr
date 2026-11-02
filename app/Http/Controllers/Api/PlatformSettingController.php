@@ -11,6 +11,7 @@ use App\Http\Resources\PlatformSettingResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\JsonResponse;
+use Symfony\Component\HttpFoundation\Response;
 
 class PlatformSettingController extends Controller
 {
@@ -20,6 +21,8 @@ class PlatformSettingController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
+        abort_unless($request->user()?->role === 'super_admin', Response::HTTP_FORBIDDEN);
+
         $group = $request->query('group');
 
         return PlatformSettingResource::collection(

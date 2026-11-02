@@ -11,7 +11,7 @@ class StoreCompanyRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        return $this->user()?->role === 'super_admin';
     }
 
     /** @return array<string, mixed> */
@@ -52,7 +52,8 @@ class StoreCompanyRequest extends FormRequest
             'primary_contact.phone' => ['nullable', 'string', 'max:40'],
             'primary_contact.mobile' => ['nullable', 'string', 'max:40'],
             'primary_contact.language' => ['nullable', 'string', 'max:5'],
-            'primary_contact.role' => ['nullable', 'string', 'in:super_admin,admin,tenant,employe,team_manager'],
+            // Contact principal = unique compte tenant de l'entreprise
+            'primary_contact.role' => ['nullable', 'string', 'in:tenant'],
             'primary_contact.password' => ['required_with:primary_contact.email', 'string', 'min:8'],
         ];
     }

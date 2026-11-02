@@ -121,15 +121,17 @@ final class SelfServiceLeaveBalanceService
     private function sumDaysByLeaveType($requests, int $year): array
     {
         $totals = [];
+        $from = Carbon::create($year, 1, 1)->startOfDay();
+        $to = Carbon::create($year, 12, 31)->startOfDay();
 
         foreach ($requests as $request) {
-            $startYear = (int) optional($request->start_date)?->format('Y');
-            if ($startYear !== $year) {
+            $days = $request->daysWithinPeriod($from, $to);
+            if ($days <= 0) {
                 continue;
             }
 
             $code = strtoupper((string) $request->leave_type);
-            $totals[$code] = ($totals[$code] ?? 0.0) + (float) $request->total_days;
+            $totals[$code] = ($totals[$code] ?? 0.0) + $days;
         }
 
         return $totals;

@@ -7,7 +7,9 @@ namespace App\Http\Controllers\Api;
 use App\Application\Services\CompanyUserService;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CompanyUser\StoreCompanyUserRequest;
+use App\Http\Requests\CompanyUser\UpdateCompanyUserRequest;
 use App\Http\Resources\CompanyUserResource;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -41,5 +43,16 @@ class CompanyUserController extends Controller
         return (new CompanyUserResource($user))
             ->response()
             ->setStatusCode(Response::HTTP_CREATED);
+    }
+
+    public function update(UpdateCompanyUserRequest $request, User $user): CompanyUserResource
+    {
+        $updated = $this->service->updateAdmin(
+            $request->user(),
+            $user,
+            $request->validated(),
+        );
+
+        return new CompanyUserResource($updated);
     }
 }

@@ -10,15 +10,39 @@ use App\Domain\Leave\Models\LeaveBalanceAdjustment;
 use App\Domain\Leave\Models\LeaveRequest;
 use App\Domain\Leave\Models\LeaveType;
 use App\Domain\Leave\Repositories\LeaveBalanceRepositoryInterface;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 
 final class EloquentLeaveBalanceRepository implements LeaveBalanceRepositoryInterface
 {
-    public function employeesForCompany(int $companyId): Collection
+    public function employeesForCompany(int $companyId, array $filters = []): Collection
     {
+        $employeeIds = isset($filters['employee_ids']) && is_array($filters['employee_ids'])
+            ? array_values(array_map('intval', $filters['employee_ids']))
+            : null;
+
+        // Liste vide explicite (ex. manager sans équipe).
+        if ($employeeIds === []) {
+            return new Collection();
+        }
+
         return Employee::query()
             ->where('company_id', $companyId)
-            ->where('is_active', true)
+            ->when($employeeIds !== null, fn ($q) => $q->whereIn('id', $employeeIds))
+            // Même règle que la fiche employés : un compte tenant n'est pas du staff RH.
+            ->where(function ($q) {
+                $q->whereNull('metadata->role')
+                    ->orWhere('metadata->role', '<>', 'tenant');
+            })
+            ->whereNotExists(function ($q) use ($companyId) {
+                $q->selectRaw('1')
+                    ->from('users')
+                    ->where('users.company_id', $companyId)
+                    ->where('users.role', 'tenant')
+                    ->whereRaw('LOWER(users.email) = LOWER(employees.email)');
+            })
+            // Afficher tout le staff non soft-deleted (actifs, inactifs, suspendus).
+            // Les soldes restent utiles même après suspension / inactivation.
             ->orderBy('first_name')
             ->orderBy('last_name')
             ->get();
@@ -43,18 +67,22 @@ final class EloquentLeaveBalanceRepository implements LeaveBalanceRepositoryInte
 
     public function usedDaysForCompanyAndYear(int $companyId, int $year): array
     {
-        return LeaveRequest::query()
+        $from = Carbon::create($year, 1, 1)->startOfDay();
+        $to = Carbon::create($year, 12, 31)->startOfDay();
+        $requests = LeaveRequest::query()
             ->where('company_id', $companyId)
             ->where('status', 'approved')
-            ->whereYear('start_date', $year)
-            ->selectRaw('employee_id, leave_type, SUM(total_days) as used_days')
-            ->groupBy('employee_id', 'leave_type')
-            ->get()
-            ->mapWithKeys(fn (LeaveRequest $request) => [
-                $request->employee_id.'|'.strtoupper((string) $request->leave_type)
-                    => (float) $request->used_days,
-            ])
-            ->all();
+            ->whereDate('start_date', '<=', $to->toDateString())
+            ->whereDate('end_date', '>=', $from->toDateString())
+            ->get();
+
+        $usedDays = [];
+        foreach ($requests as $request) {
+            $key = $request->employee_id.'|'.strtoupper((string) $request->leave_type);
+            $usedDays[$key] = ($usedDays[$key] ?? 0.0) + $request->daysWithinPeriod($from, $to);
+        }
+
+        return $usedDays;
     }
 
     public function findEmployeeByCode(int $companyId, string $employeeCode): ?Employee

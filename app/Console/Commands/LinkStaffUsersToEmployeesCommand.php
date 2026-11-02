@@ -12,7 +12,7 @@ final class LinkStaffUsersToEmployeesCommand extends Command
 {
     protected $signature = 'hr:link-staff-employees {--company= : Limiter à une company_id}';
 
-    protected $description = 'Crée une fiche Employee pour les users admin/tenant/team_manager/employe qui n\'en ont pas';
+    protected $description = 'Crée une fiche Employee pour les users admin/team_manager/employe qui n\'en ont pas';
 
     public function handle(EmployeeProfileLinker $linker): int
     {

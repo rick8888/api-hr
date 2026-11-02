@@ -11,9 +11,7 @@ use Illuminate\Http\Request;
 
 class SelfServiceAttendanceController extends Controller
 {
-    public function __construct(private readonly SelfServiceAttendanceService $service)
-    {
-    }
+    public function __construct(private readonly SelfServiceAttendanceService $service) {}
 
     public function show(Request $request): JsonResponse
     {
@@ -33,6 +31,20 @@ class SelfServiceAttendanceController extends Controller
     {
         return response()->json([
             'data' => $this->service->checkOutForActor($request->user()),
+        ]);
+    }
+
+    public function startBreak(Request $request): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->service->startBreakForActor($request->user()),
+        ]);
+    }
+
+    public function endBreak(Request $request): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->service->endBreakForActor($request->user()),
         ]);
     }
 }

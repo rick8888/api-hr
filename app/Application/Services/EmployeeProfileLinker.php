@@ -18,8 +18,10 @@ use Illuminate\Validation\ValidationException;
  */
 final class EmployeeProfileLinker
 {
-    /** Rôles pour lesquels une fiche Employee est attendue / auto-créée. */
-    public const STAFF_ROLES = ['admin', 'tenant', 'team_manager', 'employe'];
+    /** Rôles pour lesquels une fiche Employee est attendue / auto-créée (pas le tenant). */
+    public const STAFF_ROLES = ['admin', 'team_manager', 'employe'];
+
+    public function __construct(private readonly TenantPlanQuotaService $planQuotas) {}
 
     public function findForUser(User $user): ?Employee
     {
@@ -67,6 +69,12 @@ final class EmployeeProfileLinker
 
     public function createFromUser(User $user): Employee
     {
+        if ($user->role === 'tenant' || $user->role === 'super_admin') {
+            throw ValidationException::withMessages([
+                'role' => 'Un compte tenant / super_admin ne doit pas avoir de fiche employé.',
+            ]);
+        }
+
         if (! $user->company_id || blank($user->email)) {
             throw ValidationException::withMessages([
                 'email' => 'Impossible de créer une fiche employé sans email / société.',
@@ -91,6 +99,11 @@ final class EmployeeProfileLinker
         [$firstName, $lastName] = $this->splitName((string) $user->name);
 
         return DB::transaction(function () use ($user, $countryId, $firstName, $lastName) {
+            $this->planQuotas->assertCanAddResources(
+                (int) $user->company_id,
+                employees: 1,
+            );
+
             $employee = Employee::query()->create([
                 'company_id' => (int) $user->company_id,
                 'country_id' => (int) $countryId,
@@ -208,7 +221,6 @@ final class EmployeeProfileLinker
     private function defaultJobTitle(string $role): string
     {
         return match ($role) {
-            'tenant' => 'Tenant',
             'admin' => 'Administrateur RH',
             'team_manager' => 'Manager d\'équipe',
             'employe' => 'Employé',

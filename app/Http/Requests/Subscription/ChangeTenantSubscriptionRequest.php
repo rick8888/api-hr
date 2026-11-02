@@ -33,6 +33,7 @@ class ChangeTenantSubscriptionRequest extends FormRequest
                 'nullable',
                 'required_if:payment_method,'.PaymentMethod::CODE_MOBILE_MONEY,
                 'string',
+                Rule::in(['orange_money', 'airtel_money', 'mpesa']),
                 'max:50',
             ],
             'phone_number' => [
@@ -42,10 +43,13 @@ class ChangeTenantSubscriptionRequest extends FormRequest
                 'max:40',
             ],
             'reference' => ['nullable', 'string', 'max:120'],
-            'receipt' => ['nullable', 'array'],
-            'receipt.name' => ['nullable', 'string', 'max:255'],
-            'receipt.size' => ['nullable', 'integer', 'min:0'],
-            'receipt.type' => ['nullable', 'string', 'max:100'],
+            'receipt' => [
+                'exclude_unless:payment_method,'.PaymentMethod::CODE_BANK_TRANSFER,
+                'required',
+                'file',
+                'mimes:pdf,jpg,jpeg,png,webp',
+                'max:5120',
+            ],
         ];
     }
 
