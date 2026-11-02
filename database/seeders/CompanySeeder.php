@@ -11,6 +11,8 @@ use Illuminate\Database\Seeder;
 
 class CompanySeeder extends Seeder
 {
+    private const TENANT_PASSWORD = 'password123';
+
     public function run(): void
     {
         $france = Country::query()->where('code', 'FR')->first();
@@ -82,6 +84,8 @@ class CompanySeeder extends Seeder
 
         /** @var TenantContactUserService $tenantUsers */
         $tenantUsers = app(TenantContactUserService::class);
-        Company::query()->each(fn (Company $company) => $tenantUsers->syncForCompany($company));
+        Company::query()->each(
+            fn (Company $company) => $tenantUsers->syncForCompany($company, self::TENANT_PASSWORD)
+        );
     }
 }

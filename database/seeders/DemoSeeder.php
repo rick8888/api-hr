@@ -20,6 +20,8 @@ use Illuminate\Database\Seeder;
  */
 class DemoSeeder extends Seeder
 {
+    private const TENANT_PASSWORD = 'password123';
+
     public function run(): void
     {
         $morocco = Country::query()->where('code', 'MA')->firstOrFail();
@@ -66,7 +68,7 @@ class DemoSeeder extends Seeder
             ]
         );
 
-        app(TenantContactUserService::class)->syncForCompany($company);
+        app(TenantContactUserService::class)->syncForCompany($company, self::TENANT_PASSWORD);
 
         $components = [
             [

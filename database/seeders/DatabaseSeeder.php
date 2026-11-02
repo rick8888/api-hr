@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
-use App\Models\User;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -35,5 +34,12 @@ class DatabaseSeeder extends Seeder
             BillingSeeder::class,
             CompanySubscriptionSeeder::class,
         ]);
+
+        if (app()->environment(['local', 'testing'])) {
+            $this->call([
+                PayrollCountryTestDataSeeder::class,
+                DemoHrDataSeeder::class,
+            ]);
+        }
     }
 }
