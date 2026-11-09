@@ -21,8 +21,7 @@ final class EquipmentAssignmentService
         private readonly EquipmentRepositoryInterface $equipments,
         private readonly EmployeeProfileLinker $employeeProfiles,
         private readonly AuditLogger $audit,
-    ) {
-    }
+    ) {}
 
     /**
      * @param  array<string, mixed>  $filters
@@ -33,7 +32,7 @@ final class EquipmentAssignmentService
         $companyId = $this->resolveCompanyId($actor);
         $scoped = $this->applySelfServiceScope($actor, $filters);
         if ($scoped === null) {
-            return new Collection();
+            return new Collection;
         }
         unset($scoped['mine']);
 
@@ -66,7 +65,10 @@ final class EquipmentAssignmentService
             ]);
 
             $this->audit->log('equipment_assignment.issue_reported', $updated, [
+                'employee_id' => $updated->employee_id,
                 'equipment_id' => $updated->equipment_id,
+                'equipment_name' => $updated->equipment?->name,
+                'status' => 'assigned',
             ]);
 
             return $updated;
@@ -104,7 +106,10 @@ final class EquipmentAssignmentService
             }
 
             $this->audit->log('equipment_assignment.returned', $updated, [
+                'employee_id' => $updated->employee_id,
                 'equipment_id' => $updated->equipment_id,
+                'equipment_name' => $updated->equipment?->name,
+                'status' => 'returned',
             ]);
 
             return $updated;

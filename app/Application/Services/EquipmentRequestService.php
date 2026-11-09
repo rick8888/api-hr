@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Application\Services;
 
 use App\Domain\Employee\Models\Employee;
-use App\Domain\Equipment\Models\EquipmentAssignment;
 use App\Domain\Equipment\Models\EquipmentRequest;
 use App\Domain\Equipment\Repositories\EquipmentAssignmentRepositoryInterface;
 use App\Domain\Equipment\Repositories\EquipmentRepositoryInterface;
@@ -25,8 +24,7 @@ final class EquipmentRequestService
         private readonly EquipmentAssignmentRepositoryInterface $assignments,
         private readonly EmployeeProfileLinker $employeeProfiles,
         private readonly AuditLogger $audit,
-    ) {
-    }
+    ) {}
 
     /**
      * @param  array<string, mixed>  $filters
@@ -37,7 +35,7 @@ final class EquipmentRequestService
         $companyId = $this->resolveCompanyId($actor);
         $scoped = $this->applySelfServiceScope($actor, $filters);
         if ($scoped === null) {
-            return new Collection();
+            return new Collection;
         }
         unset($scoped['mine']);
 
@@ -170,7 +168,7 @@ final class EquipmentRequestService
                 ]);
 
                 for ($i = 0; $i < $request->quantity; $i++) {
-                    $this->assignments->create([
+                    $assignment = $this->assignments->create([
                         'company_id' => $companyId,
                         'equipment_id' => $request->equipment_id,
                         'employee_id' => $request->employee_id,
@@ -181,6 +179,12 @@ final class EquipmentRequestService
                         'issue_note' => null,
                         'issue_reported_at' => null,
                     ]);
+                    $this->audit->log('equipment_assignment.assigned', $assignment, [
+                        'employee_id' => $request->employee_id,
+                        'equipment_id' => $equipment->id,
+                        'equipment_name' => $equipment->name,
+                        'status' => 'assigned',
+                    ], userId: $actor->id);
                 }
             }
 
@@ -192,6 +196,7 @@ final class EquipmentRequestService
             ]);
 
             $this->audit->log('equipment_request.status_updated', $updated, [
+                'employee_id' => $updated->employee_id,
                 'status' => $status,
             ]);
 

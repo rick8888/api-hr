@@ -5,11 +5,10 @@ declare(strict_types=1);
 namespace App\Application\Services;
 
 use App\Domain\Employee\Models\Employee;
-use App\Domain\Training\Models\Training;
+use App\Domain\Platform\Support\EntityStatusCatalog;
 use App\Domain\Training\Models\TrainingEnrollment;
 use App\Domain\Training\Repositories\TrainingEnrollmentRepositoryInterface;
 use App\Domain\Training\Repositories\TrainingRepositoryInterface;
-use App\Domain\Platform\Support\EntityStatusCatalog;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Collection;
@@ -25,8 +24,7 @@ final class TrainingEnrollmentService
         private readonly TrainingRepositoryInterface $trainings,
         private readonly EmployeeProfileLinker $employeeProfiles,
         private readonly AuditLogger $audit,
-    ) {
-    }
+    ) {}
 
     /**
      * @param  array<string, mixed>  $filters
@@ -38,7 +36,7 @@ final class TrainingEnrollmentService
         $scoped = $this->applySelfServiceScope($actor, $filters);
 
         if ($scoped === null) {
-            return new Collection();
+            return new Collection;
         }
 
         unset($scoped['mine']);
@@ -84,7 +82,7 @@ final class TrainingEnrollmentService
             ->where('status', 'cancelled')
             ->first();
 
-        return DB::transaction(function () use ($actor, $companyId, $training, $employee, $cancelled) {
+        return DB::transaction(function () use ($companyId, $training, $employee, $cancelled) {
             if ($cancelled !== null) {
                 $row = $this->repository->update($cancelled, [
                     'status' => 'enrolled',
@@ -109,6 +107,8 @@ final class TrainingEnrollmentService
             $this->audit->log('training_enrollment.created', $row, [
                 'training_id' => $training->id,
                 'employee_id' => $employee->id,
+                'training_name' => $training->name,
+                'status' => $row->status,
             ]);
 
             return $row;
@@ -129,7 +129,10 @@ final class TrainingEnrollmentService
 
         return DB::transaction(function () use ($enrollment) {
             $this->audit->log('training_enrollment.cancelled', $enrollment, [
+                'employee_id' => $enrollment->employee_id,
                 'training_id' => $enrollment->training_id,
+                'training_name' => $enrollment->training?->name,
+                'status' => 'cancelled',
             ]);
 
             return $this->repository->update($enrollment, [
@@ -190,7 +193,12 @@ final class TrainingEnrollmentService
 
             $updated = $this->repository->update($enrollment, $payload);
             $this->audit->log('training_enrollment.status_updated', $updated, [
+                'employee_id' => $updated->employee_id,
+                'training_id' => $updated->training_id,
+                'training_name' => $updated->training?->name,
                 'status' => $status,
+                'progress' => (int) $updated->progress,
+                'completed_at' => $updated->completed_at?->toIso8601String(),
             ]);
 
             return $updated;

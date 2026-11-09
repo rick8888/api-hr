@@ -6,6 +6,9 @@ namespace App\Application\Services;
 
 use App\Domain\Attendance\Models\AttendanceRecord;
 use App\Domain\Employee\Models\Employee;
+use App\Domain\Employee\Models\EmployeeOffboardingTask;
+use App\Domain\Employee\Models\PerformanceObjective;
+use App\Domain\Employee\Models\PerformanceReview;
 use App\Domain\Leave\Models\LeaveRequest;
 use App\Domain\Organization\Models\Holiday;
 use App\Domain\Recruitment\Models\Candidate;
@@ -156,6 +159,119 @@ final class AdminDashboardService
                 ->all(),
             'schedule' => $this->buildSchedule($companyId, $today, $teamEmployeeIds),
             'schedule_dates' => $this->scheduleHighlightDates($companyId, $today, $teamEmployeeIds),
+            'hr_actions' => $actor->hasPermission('employees.manage')
+                ? $this->buildHrActions($companyId, $employees, $today)
+                : null,
+        ];
+    }
+
+    /**
+     * @param  Collection<int, Employee>  $employees
+     * @return array<string, array{count: int, items: array<int, array<string, mixed>>}>
+     */
+    private function buildHrActions(int $companyId, Collection $employees, Carbon $today): array
+    {
+        $probationCandidates = $employees
+            ->map(function (Employee $employee): ?array {
+                $metadata = is_array($employee->metadata) ? $employee->metadata : [];
+                if (! empty($metadata['probation_decision'])) {
+                    return null;
+                }
+
+                $rawDueDate = $metadata['probation_end_date'] ?? null;
+                if (! is_string($rawDueDate) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/D', $rawDueDate)) {
+                    return null;
+                }
+
+                [$year, $month, $day] = array_map('intval', explode('-', $rawDueDate));
+                if (! checkdate($month, $day, $year)) {
+                    return null;
+                }
+
+                $dueDate = Carbon::createFromFormat('!Y-m-d', $rawDueDate);
+                if (! $dueDate instanceof Carbon || $dueDate->toDateString() !== $rawDueDate) {
+                    return null;
+                }
+
+                return [
+                    'id' => $employee->id,
+                    'label' => $employee->full_name,
+                    'due_date' => $dueDate->toDateString(),
+                    'sort_date' => $dueDate->toDateString(),
+                ];
+            })
+            ->filter(fn (?array $item): bool => $item !== null)
+            ->filter(fn (array $item): bool => $item['sort_date'] <= $today->copy()->addDays(30)->toDateString());
+        $probationCount = $probationCandidates->count();
+        $probationItems = $probationCandidates
+            ->sortBy('sort_date')
+            ->take(5)
+            ->map(fn (array $item): array => [
+                'id' => $item['id'],
+                'label' => $item['label'],
+                'due_date' => $item['due_date'],
+            ])
+            ->values()
+            ->all();
+
+        $employeeIds = $employees->modelKeys();
+        $objectiveQuery = PerformanceObjective::query()
+            ->whereNotNull('due_date')
+            ->whereDate('due_date', '<=', $today->copy()->addDays(7)->toDateString())
+            ->where('status', '!=', 'completed')
+            ->whereHas('review', fn (Builder $query) => $query
+                ->where('company_id', $companyId)
+                ->where('status', PerformanceReview::STATUS_SUBMITTED)
+                ->whereIn('employee_id', $employeeIds))
+            ->whereHas('review.employee', fn (Builder $query) => $query->where('is_active', true));
+        $objectiveCount = (clone $objectiveQuery)->count();
+        $objectiveItems = $objectiveQuery
+            ->with('review.employee:id,first_name,last_name')
+            ->orderBy('due_date')
+            ->orderBy('id')
+            ->limit(5)
+            ->get()
+            ->map(fn (PerformanceObjective $objective): array => [
+                'id' => $objective->id,
+                'label' => $objective->review?->employee?->full_name ?? '',
+                'detail' => $objective->title,
+                'due_date' => $objective->due_date?->toDateString(),
+            ])
+            ->values()
+            ->all();
+
+        $offboardingQuery = EmployeeOffboardingTask::query()
+            ->where('status', EmployeeOffboardingTask::STATUS_PENDING)
+            ->whereHas('employee', fn (Builder $query) => $query->where('company_id', $companyId));
+        $offboardingCount = (clone $offboardingQuery)->count();
+        $offboardingItems = $offboardingQuery
+            ->with('employee:id,first_name,last_name')
+            ->orderBy('employee_id')
+            ->orderBy('id')
+            ->limit(5)
+            ->get()
+            ->map(fn (EmployeeOffboardingTask $task): array => [
+                'id' => $task->id,
+                'label' => $task->employee?->full_name ?? '',
+                'detail' => $task->title,
+                'due_date' => null,
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'probation' => [
+                'count' => $probationCount,
+                'items' => $probationItems,
+            ],
+            'objectives' => [
+                'count' => $objectiveCount,
+                'items' => $objectiveItems,
+            ],
+            'offboarding' => [
+                'count' => $offboardingCount,
+                'items' => $offboardingItems,
+            ],
         ];
     }
 

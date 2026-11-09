@@ -31,6 +31,7 @@ final class EmployeeService
         private readonly DocumentTemplateMailService $templateMail,
         private readonly EmployeeLifecycleDocumentService $lifecycleDocuments,
         private readonly TenantPlanQuotaService $planQuotas,
+        private readonly EmployeeOffboardingService $offboarding,
     ) {}
 
     public function paginate(int $perPage = 15, ?int $companyId = null): LengthAwarePaginator
@@ -436,7 +437,7 @@ final class EmployeeService
             'by_user_id' => $actor->id,
         ];
 
-        $updated = DB::transaction(function () use ($employee, $metadata, $type, $rehire, $exitDate, $lastWorkingDay, $reason, $notify, $generateLetter) {
+        $updated = DB::transaction(function () use ($actor, $employee, $metadata, $type, $rehire, $exitDate, $lastWorkingDay, $reason, $notify, $generateLetter) {
             $updated = $this->repository->update($employee, [
                 'is_active' => false,
                 'terminated_at' => $exitDate,
@@ -457,6 +458,7 @@ final class EmployeeService
             ]);
 
             $this->revokeLinkedUserAccess($updated);
+            $this->offboarding->start($updated, $actor, accessRevoked: true);
 
             return $updated;
         });
@@ -486,7 +488,7 @@ final class EmployeeService
             'by_user_id' => $actor->id,
         ];
 
-        return DB::transaction(function () use ($employee, $metadata) {
+        return DB::transaction(function () use ($actor, $employee, $metadata) {
             $updated = $this->repository->update($employee, [
                 'is_active' => false,
                 'metadata' => $metadata,
@@ -499,6 +501,7 @@ final class EmployeeService
             ]);
 
             $this->revokeLinkedUserAccess($updated);
+            $this->offboarding->start($updated, $actor, accessRevoked: true);
 
             return $updated;
         });

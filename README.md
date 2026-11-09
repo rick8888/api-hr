@@ -102,6 +102,17 @@ Toutes les routes sont préfixées par `/api/v1`.
 | `PUT`    | `/employees/{id}`       | Modifier |
 | `DELETE` | `/employees/{id}`       | Soft-delete |
 
+### Période d’essai
+| Méthode | URL | Description |
+|---|---|---|
+| `GET`  | `/probation-reviews` | Historique des évaluations de l’entreprise |
+| `POST` | `/employees/{id}/probation-reviews` | Enregistrer un point d’étape, confirmer, prolonger ou mettre fin au contrat |
+
+Les prolongations conservent l’échéance précédente dans l’historique. Les rappels par
+courriel sont envoyés aux utilisateurs de l’entreprise disposant de `employees.manage`
+à 30, 14, 7 et 1 jour de l’échéance. Le planificateur Laravel doit être actif pour
+exécuter la commande quotidienne `hr:send-probation-reminders`.
+
 ### Composants de paie
 | Méthode | URL | Description |
 |---|---|---|
@@ -271,7 +282,64 @@ autorisés à gérer les employés.
 
 ---
 
-## 8. Audit
+## 8. Évaluations de performance et objectifs
+
+Les utilisateurs disposant de `employees.view` peuvent consulter les évaluations
+de leur entreprise ; la création, la modification et la soumission requièrent
+`employees.manage`. Les responsables d’équipe restent limités à leurs employés
+directs.
+
+- `GET /api/v1/performance-reviews` accepte `employee_id`, `status` et `search`.
+- `POST /api/v1/performance-reviews` crée un brouillon avec une période, une note
+  de 1 à 5 et jusqu’à 10 objectifs.
+- Un objectif peut inclure `training_id` pour inscrire l’employé à une formation
+  publiée et active de son entreprise. La réponse expose son inscription et sa
+  progression ; les mises à jour restent synchronisées avec le suivi des formations.
+- `PUT /api/v1/performance-reviews/{performance_review}` modifie un brouillon.
+- `PATCH /api/v1/performance-reviews/{performance_review}/status` soumet le
+  brouillon avec `{"status":"submitted"}` ; les évaluations soumises sont
+  verrouillées pour toute modification du contenu et de la note.
+- `PATCH /api/v1/performance-reviews/{performance_review}/objectives/{objective}/progress`
+  met à jour séparément le statut et le pourcentage d’un objectif soumis, sans
+  modifier l’évaluation. Un objectif complété reçoit automatiquement 100 %.
+  Un commentaire facultatif peut accompagner la mise à jour ; chaque changement
+  conserve son état précédent, son nouvel état, son auteur, sa date et son commentaire
+  dans l’historique de l’objectif.
+- Les objectifs non terminés des évaluations soumises apparaissent avec leur
+  échéance dans le suivi ; un rappel est envoyé 7 jours avant, la veille, le jour
+  de l’échéance, puis chaque semaine tant que l’objectif est en retard. La commande
+  planifiée `hr:send-objective-reminders` s’exécute à 08:15.
+- `DELETE /api/v1/performance-reviews/{performance_review}` supprime un
+  brouillon.
+
+Une seule évaluation est autorisée par employé et par période exacte.
+
+---
+
+## 9. Départ et checklist d’offboarding
+
+La résiliation et le départ à la retraite créent une checklist persistante. Le
+processus de résiliation existant révoque déjà les jetons d’accès et le module
+matériel gère déjà les restitutions ; l’offboarding suit ces opérations sans les
+dupliquer. La restitution d’équipement ne peut pas être clôturée tant qu’une
+attribution est encore active.
+
+- `GET /api/v1/employee-offboarding` liste les étapes des départs de l’entreprise.
+- `POST /api/v1/employees/{employee}/offboarding` initialise le suivi d’un départ
+  antérieur qui ne dispose pas encore de checklist.
+- `PATCH /api/v1/employees/{employee}/offboarding/{task}` met une étape en
+  `pending` ou `completed`.
+- La restitution utilise l’endpoint existant
+  `PATCH /api/v1/equipment-assignments/{equipment_assignment}/return`.
+
+Ces endpoints de suivi nécessitent `employees.manage`. La checklist comprend le
+transfert des responsabilités, le matériel, la vérification des accès, la
+clôture paie/avantages et la remise des documents. La fin de toutes les étapes
+est horodatée dans les métadonnées de départ de l’employé.
+
+---
+
+## 10. Audit
 
 Chaque opération métier (création/édition d'employé, génération de paie,
 modification d'une taxe…) est tracée dans la table `audit_logs` via

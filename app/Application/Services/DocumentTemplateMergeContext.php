@@ -134,6 +134,12 @@ final class DocumentTemplateMergeContext
             ['key' => 'suspension.date', 'label' => 'Date de suspension', 'example' => '01/08/2025'],
             ['key' => 'suspension.duration_days', 'label' => 'Durée suspension (jours)', 'example' => '7'],
             ['key' => 'suspension.reason', 'label' => 'Motif suspension', 'example' => '…'],
+            ['key' => 'extra.probation_end_date', 'label' => 'Fin de période d’essai', 'example' => '25/10/2025'],
+            ['key' => 'extra.probation_days_before', 'label' => 'Jours avant fin de période d’essai', 'example' => '7'],
+            ['key' => 'extra.objective_title', 'label' => 'Intitulé de l’objectif', 'example' => 'Finaliser le plan de formation'],
+            ['key' => 'extra.objective_due_date', 'label' => 'Échéance de l’objectif', 'example' => '25/10/2025'],
+            ['key' => 'extra.objective_timing', 'label' => 'État de l’échéance', 'example' => 'arrive à échéance dans 7 jours'],
+            ['key' => 'extra.objective_progress', 'label' => 'Progression de l’objectif (%)', 'example' => '60'],
             ['key' => 'today', 'label' => 'Date du jour', 'example' => '18/09/2025'],
             ['key' => 'today_long', 'label' => 'Date du jour (long)', 'example' => '18 septembre 2025'],
         ];

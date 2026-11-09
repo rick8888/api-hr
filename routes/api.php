@@ -19,8 +19,10 @@ use App\Http\Controllers\Api\DocumentCategoryController;
 use App\Http\Controllers\Api\DocumentRequestController;
 use App\Http\Controllers\Api\DocumentTemplateController;
 use App\Http\Controllers\Api\EmployeeController;
-use App\Http\Controllers\Api\EmployeeOnboardingController;
 use App\Http\Controllers\Api\EmployeeDocumentController;
+use App\Http\Controllers\Api\EmployeeOffboardingController;
+use App\Http\Controllers\Api\EmployeeOnboardingController;
+use App\Http\Controllers\Api\EmployeeProbationController;
 use App\Http\Controllers\Api\EmployeeStructureController;
 use App\Http\Controllers\Api\EntityStatusController;
 use App\Http\Controllers\Api\EquipmentAssignmentController;
@@ -43,6 +45,7 @@ use App\Http\Controllers\Api\PayrollController;
 use App\Http\Controllers\Api\PayrollCycleController;
 use App\Http\Controllers\Api\PayrollModifierController;
 use App\Http\Controllers\Api\PayrollSettingsController;
+use App\Http\Controllers\Api\PerformanceReviewController;
 use App\Http\Controllers\Api\PlatformSettingController;
 use App\Http\Controllers\Api\RegularizationController;
 use App\Http\Controllers\Api\RegularizationTypeController;
@@ -162,6 +165,15 @@ Route::prefix('v1')->group(function () {
             Route::get('employees/{employee}/activities', [EmployeeController::class, 'activities']);
             Route::get('employees/{employee}/structure', [EmployeeStructureController::class, 'index']);
             Route::apiResource('employees', EmployeeController::class)->only(['index', 'show']);
+            Route::get('performance-reviews', [PerformanceReviewController::class, 'index']);
+        });
+
+        Route::middleware('permission:employees.manage')->group(function () {
+            Route::get('probation-reviews', [EmployeeProbationController::class, 'index']);
+            Route::post(
+                'employees/{employee}/probation-reviews',
+                [EmployeeProbationController::class, 'store']
+            );
         });
 
         Route::middleware('permission:employees.manage|attendance.manage')->group(function () {
@@ -170,6 +182,27 @@ Route::prefix('v1')->group(function () {
         });
 
         Route::middleware('permission:employees.manage')->group(function () {
+            Route::get('employee-offboarding', [EmployeeOffboardingController::class, 'index']);
+            Route::post(
+                'employees/{employee}/offboarding',
+                [EmployeeOffboardingController::class, 'start']
+            );
+            Route::patch(
+                'employees/{employee}/offboarding/{task}',
+                [EmployeeOffboardingController::class, 'updateTask']
+            );
+            Route::post('performance-reviews', [PerformanceReviewController::class, 'store']);
+            Route::put('performance-reviews/{performance_review}', [PerformanceReviewController::class, 'update']);
+            Route::patch('performance-reviews/{performance_review}', [PerformanceReviewController::class, 'update']);
+            Route::patch(
+                'performance-reviews/{performance_review}/status',
+                [PerformanceReviewController::class, 'updateStatus']
+            );
+            Route::patch(
+                'performance-reviews/{performance_review}/objectives/{objective}/progress',
+                [PerformanceReviewController::class, 'updateObjectiveProgress']
+            );
+            Route::delete('performance-reviews/{performance_review}', [PerformanceReviewController::class, 'destroy']);
             Route::post('employees/import', [EmployeeController::class, 'import']);
             Route::post('employees/{employee}/avatar', [EmployeeController::class, 'updateAvatar']);
             Route::post('employees/bulk-status', [EmployeeController::class, 'bulkStatus']);

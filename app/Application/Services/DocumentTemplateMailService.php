@@ -37,6 +37,49 @@ final class DocumentTemplateMailService
         return $this->sendByTemplateCode($employee, $code, $locale);
     }
 
+    /** @param array<string, mixed> $extra */
+    public function notificationForEvent(
+        Employee $employee,
+        string $eventKey,
+        array $extra = [],
+        ?string $locale = null,
+    ): ?TemplatedMailNotification {
+        if ($employee->company_id === null) {
+            return null;
+        }
+
+        $map = config('document_templates.events', []);
+        $code = is_array($map) ? ($map[$eventKey] ?? null) : null;
+        if (! is_string($code) || $code === '') {
+            Log::info('Aucun modèle e-mail associé à cet événement.', [
+                'employee_id' => $employee->id,
+                'event' => $eventKey,
+            ]);
+
+            return null;
+        }
+
+        $locale ??= (string) config('document_templates.default_locale', 'fr');
+        $template = $this->templates->findPublishedByCode((int) $employee->company_id, $code, $locale);
+        if ($template === null || $template->channel !== 'email') {
+            Log::info('Modèle e-mail introuvable ou non publié.', [
+                'employee_id' => $employee->id,
+                'template_code' => $code,
+                'locale' => $locale,
+            ]);
+
+            return null;
+        }
+
+        $employee->loadMissing('company');
+        $context = $this->contextBuilder->build($employee, extra: $extra);
+        $subjectRaw = $template->subject ?: $template->name;
+        $subject = $this->renderer->render($subjectRaw, $context['flat']);
+        $body = $this->renderer->render($template->body_html, $context['flat']);
+
+        return new TemplatedMailNotification($subject, $body);
+    }
+
     public function sendByTemplateCode(Employee $employee, string $templateCode, ?string $locale = null): bool
     {
         if (blank($employee->email) || $employee->company_id === null) {

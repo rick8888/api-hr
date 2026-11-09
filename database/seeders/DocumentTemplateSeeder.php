@@ -188,6 +188,24 @@ class DocumentTemplateSeeder extends Seeder
                 'sort_order' => 280,
                 'body_html' => $this->notifManagerMissedCheckin(),
             ],
+            [
+                'code' => 'notif_probation_reminder',
+                'name' => 'Rappel — Fin de période d’essai',
+                'family' => 'notification',
+                'channel' => 'email',
+                'subject' => 'Période d’essai de {{ employee.full_name }} — échéance le {{ extra.probation_end_date }}',
+                'sort_order' => 290,
+                'body_html' => $this->notifProbationReminder(),
+            ],
+            [
+                'code' => 'notif_performance_objective_due',
+                'name' => 'Rappel — Échéance d’un objectif RH',
+                'family' => 'notification',
+                'channel' => 'email',
+                'subject' => 'Objectif RH de {{ employee.full_name }} : {{ extra.objective_timing }}',
+                'sort_order' => 300,
+                'body_html' => $this->notifPerformanceObjectiveDue(),
+            ],
         ];
 
         foreach ($templates as $row) {
@@ -427,6 +445,28 @@ HTML;
 <p>Le collaborateur <strong>{{ employee.full_name }}</strong> ({{ employee.department }} / {{ employee.job_title }}) n’a pas pointé ce jour ({{ today }}).</p>
 <p>Vous pouvez le contacter ou vérifier une éventuelle absence / télétravail.</p>
 <p>— Système de présence {{ company.name }}</p>
+HTML;
+    }
+
+    private function notifProbationReminder(): string
+    {
+        return <<<'HTML'
+<p>Bonjour,</p>
+<p>La période d’essai de <strong>{{ employee.full_name }}</strong> arrive à échéance dans {{ extra.probation_days_before }} jour(s).</p>
+<p>Date de fin prévue : {{ extra.probation_end_date }}.</p>
+<p>Pensez à planifier son évaluation et à enregistrer la décision RH dans Bravo RH.</p>
+<p>— {{ company.name }}</p>
+HTML;
+    }
+
+    private function notifPerformanceObjectiveDue(): string
+    {
+        return <<<'HTML'
+<p>Bonjour,</p>
+<p>L’objectif « <strong>{{ extra.objective_title }}</strong> » de {{ employee.full_name }} {{ extra.objective_timing }}.</p>
+<p>Échéance : {{ extra.objective_due_date }}. Progression actuelle : {{ extra.objective_progress }} %.</p>
+<p>Consultez les évaluations de performance dans Bravo RH pour actualiser son suivi.</p>
+<p>— {{ company.name }}</p>
 HTML;
     }
 }

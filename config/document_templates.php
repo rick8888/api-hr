@@ -25,6 +25,8 @@ return [
         'employee.work_anniversary' => 'notif_work_anniversary',
         'payroll.payslip_ready' => 'email_payslip_ready',
         'document.expiring' => 'email_document_expiring',
+        'employee.probation_reminder' => 'notif_probation_reminder',
+        'performance.objective_due' => 'notif_performance_objective_due',
     ],
 
     /*

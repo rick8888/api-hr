@@ -6,9 +6,11 @@ namespace App\Domain\Employee\Models;
 
 use App\Domain\Company\Models\Company;
 use App\Domain\Company\Models\Country;
+use App\Domain\Equipment\Models\EquipmentAssignment;
 use App\Domain\Payroll\Models\EmployeeSalaryStructure;
 use App\Domain\Payroll\Models\Payroll;
 use App\Domain\Payroll\Models\PayrollModifier;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -99,6 +101,21 @@ class Employee extends Model
         return $this->hasMany(EmployeeOnboardingTask::class);
     }
 
+    public function offboardingTasks(): HasMany
+    {
+        return $this->hasMany(EmployeeOffboardingTask::class);
+    }
+
+    public function equipmentAssignments(): HasMany
+    {
+        return $this->hasMany(EquipmentAssignment::class);
+    }
+
+    public function performanceReviews(): HasMany
+    {
+        return $this->hasMany(PerformanceReview::class);
+    }
+
     public function getFullNameAttribute(): string
     {
         return trim("{$this->first_name} {$this->last_name}");
@@ -121,7 +138,7 @@ class Employee extends Model
     public function activeSalaryStructure(?string $period = null): ?EmployeeSalaryStructure
     {
         $period ??= now()->format('Y-m-d');
-        $date = \Carbon\Carbon::parse($period);
+        $date = Carbon::parse($period);
 
         return $this->salaryStructures()
             ->where('status', 'active')

@@ -29,8 +29,7 @@ class EmployeeController extends Controller
         private readonly EmployeeService $service,
         private readonly EmployeeActivityService $activities,
         private readonly EmployeeImportExportService $importExport,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -162,7 +161,12 @@ class EmployeeController extends Controller
         $limit = max(1, min($limit, 100));
 
         return response()->json([
-            'data' => $this->activities->forEmployee($employee, $limit),
+            'data' => $this->activities->forEmployee(
+                $employee,
+                $limit,
+                $request->user()->hasAnyPermission('payroll.view', 'payroll.manage'),
+                true,
+            ),
         ]);
     }
 

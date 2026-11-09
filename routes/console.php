@@ -35,3 +35,5 @@ Artisan::command('demo:reset {--force : Exécuter sans demander confirmation}', 
 })->purpose('Réinitialise la base locale et recharge les données de démonstration');
 
 Schedule::command('hr:generate-payrolls')->dailyAt('02:00');
+Schedule::command('hr:send-probation-reminders')->dailyAt('08:00')->withoutOverlapping();
+Schedule::command('hr:send-objective-reminders')->dailyAt('08:15')->withoutOverlapping();
