@@ -27,8 +27,7 @@ final class SelfServicePayslipsService
     public function __construct(
         private readonly EmployeeProfileLinker $employeeProfiles,
         private readonly PayslipPdfService $payslipPdf,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array{kpis: array<string, mixed>, items: list<array<string, mixed>>, employee: array<string, mixed>|null}
@@ -194,12 +193,13 @@ final class SelfServicePayslipsService
     {
         $snapshot = is_array($payroll->snapshot) ? $payroll->snapshot : [];
         $variables = is_array($snapshot['variables'] ?? null) ? $snapshot['variables'] : [];
+        $attendanceSnapshot = is_array($snapshot['attendance'] ?? null) ? $snapshot['attendance'] : [];
         $summary = is_array($payroll->summary) ? $payroll->summary : [];
-        $source = array_merge($summary, $variables);
+        $source = array_merge($summary, $variables, $attendanceSnapshot);
 
         $keys = [
             'working_days' => ['working_days', 'workingDays', 'days_worked_base'],
-            'worked_days' => ['worked_days', 'workedDays', 'present_days'],
+            'worked_days' => ['worked_days', 'days_worked', 'workedDays', 'daysWorked', 'present_days'],
             'leave_days' => ['leave_days', 'leaveDays'],
             'absent_days' => ['absent_days', 'absentDays'],
             'late_days' => ['late_days', 'lateDays'],

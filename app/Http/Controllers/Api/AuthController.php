@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Application\Services\AuditLogger;
 use App\Application\Services\EmployeeProfileLinker;
+use App\Application\Services\TenantSubscriptionService;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Resources\AuthUserResource;
@@ -20,6 +21,7 @@ class AuthController extends Controller
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly EmployeeProfileLinker $profiles,
+        private readonly TenantSubscriptionService $subscriptions,
     ) {}
 
     public function login(LoginRequest $request): JsonResponse
@@ -30,6 +32,22 @@ class AuthController extends Controller
             return response()->json([
                 'message' => 'Identifiants invalides.',
             ], Response::HTTP_UNAUTHORIZED);
+        }
+
+        if (
+            ! in_array($user->role, ['super_admin', 'tenant'], true)
+            && $user->company_id !== null
+            && ! $user->company()->where('is_active', true)->exists()
+        ) {
+            $company = $user->company;
+            if (
+                $company === null
+                || ! $this->subscriptions->reactivateCompanyForInForceSubscription($company)
+            ) {
+                return response()->json([
+                    'message' => 'L’accès à votre entreprise est suspendu. Contactez le support.',
+                ], Response::HTTP_FORBIDDEN);
+            }
         }
 
         if ($user->role !== 'super_admin') {

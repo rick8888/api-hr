@@ -47,6 +47,10 @@ final class PayrollAttendanceCalculator
      *   no_show_days: float,
      *   payable_days: float,
      *   overtime_hours: float,
+     *   late_days: float,
+     *   early_checkout_days: float,
+     *   overtime_days: float,
+     *   holidays: float,
      *   daily_rate: float,
      *   contractual_salary: float,
      *   payable_salary: float
@@ -90,6 +94,9 @@ final class PayrollAttendanceCalculator
         $noShowDays = 0.0;
         $pendingAttendanceDays = 0.0;
         $overtimeMinutes = 0;
+        $lateDays = 0.0;
+        $earlyCheckoutDays = 0.0;
+        $overtimeDays = 0.0;
 
         foreach (CarbonPeriod::create($periodFrom->toDateString(), $periodTo->toDateString()) as $day) {
             /** @var Carbon $day */
@@ -118,6 +125,9 @@ final class PayrollAttendanceCalculator
 
                 if ($record !== null) {
                     $overtimeMinutes += (int) ($record->overtime_minutes ?? 0);
+                    $lateDays += (int) ($record->late_minutes ?? 0) > 0 ? 1.0 : 0.0;
+                    $earlyCheckoutDays += (int) ($record->early_out_minutes ?? 0) > 0 ? 1.0 : 0.0;
+                    $overtimeDays += (int) ($record->overtime_minutes ?? 0) > 0 ? 1.0 : 0.0;
                     $credit = $this->creditFromRecord($record, $leave);
                     $daysWorked += $credit['worked'];
                     $leaveDays += $credit['paid_leave'];
@@ -192,6 +202,10 @@ final class PayrollAttendanceCalculator
             'unpaid_days' => $unpaidDays,
             'payable_days' => $payableDays,
             'overtime_hours' => round($overtimeMinutes / 60, 2),
+            'late_days' => $lateDays,
+            'early_checkout_days' => $earlyCheckoutDays,
+            'overtime_days' => $overtimeDays,
+            'holidays' => (float) count($holidayDates),
             'daily_rate' => $dailyRate,
             'contractual_salary' => round($contractualBase, 2),
             'payable_salary' => $payableSalary,

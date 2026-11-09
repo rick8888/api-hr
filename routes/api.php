@@ -2,47 +2,51 @@
 
 declare(strict_types=1);
 
-use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AdminDashboardController;
+use App\Http\Controllers\Api\AttendanceRecordController;
+use App\Http\Controllers\Api\AttendanceTypeController;
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CandidateController;
 use App\Http\Controllers\Api\CompanyController;
 use App\Http\Controllers\Api\CompanyUserController;
+use App\Http\Controllers\Api\CompensatoryOffController;
 use App\Http\Controllers\Api\ComplianceObligationController;
 use App\Http\Controllers\Api\CountryController;
+use App\Http\Controllers\Api\DayTypeController;
 use App\Http\Controllers\Api\DepartmentController;
 use App\Http\Controllers\Api\DesignationController;
-use App\Http\Controllers\Api\EmployeeController;
-use App\Http\Controllers\Api\ExpenseController;
-use App\Http\Controllers\Api\LoanController;
+use App\Http\Controllers\Api\DocumentCategoryController;
 use App\Http\Controllers\Api\DocumentRequestController;
+use App\Http\Controllers\Api\DocumentTemplateController;
+use App\Http\Controllers\Api\EmployeeController;
+use App\Http\Controllers\Api\EmployeeOnboardingController;
 use App\Http\Controllers\Api\EmployeeDocumentController;
+use App\Http\Controllers\Api\EmployeeStructureController;
+use App\Http\Controllers\Api\EntityStatusController;
+use App\Http\Controllers\Api\EquipmentAssignmentController;
+use App\Http\Controllers\Api\EquipmentCategoryController;
+use App\Http\Controllers\Api\EquipmentController;
+use App\Http\Controllers\Api\EquipmentRequestController;
+use App\Http\Controllers\Api\ExpenseController;
+use App\Http\Controllers\Api\ExpenseTypeController;
 use App\Http\Controllers\Api\HolidayController;
+use App\Http\Controllers\Api\InvoiceController;
+use App\Http\Controllers\Api\InvoicePaymentController;
+use App\Http\Controllers\Api\JobOpeningController;
 use App\Http\Controllers\Api\LeaveBalanceController;
 use App\Http\Controllers\Api\LeaveRequestController;
 use App\Http\Controllers\Api\LeaveTypeController;
-use App\Http\Controllers\Api\CompensatoryOffController;
-use App\Http\Controllers\Api\InvoiceController;
-use App\Http\Controllers\Api\InvoicePaymentController;
-use App\Http\Controllers\Api\EmployeeStructureController;
 use App\Http\Controllers\Api\LegalTaxController;
+use App\Http\Controllers\Api\LoanController;
 use App\Http\Controllers\Api\PaymentMethodController;
-use App\Http\Controllers\Api\AttendanceRecordController;
-use App\Http\Controllers\Api\AttendanceTypeController;
-use App\Http\Controllers\Api\EntityStatusController;
+use App\Http\Controllers\Api\PayrollController;
+use App\Http\Controllers\Api\PayrollCycleController;
+use App\Http\Controllers\Api\PayrollModifierController;
+use App\Http\Controllers\Api\PayrollSettingsController;
 use App\Http\Controllers\Api\PlatformSettingController;
 use App\Http\Controllers\Api\RegularizationController;
 use App\Http\Controllers\Api\RegularizationTypeController;
-use App\Http\Controllers\Api\DayTypeController;
-use App\Http\Controllers\Api\ExpenseTypeController;
-use App\Http\Controllers\Api\DocumentTemplateController;
-use App\Http\Controllers\Api\TerminationTypeController;
-use App\Http\Controllers\Api\DocumentCategoryController;
-use App\Http\Controllers\Api\EquipmentCategoryController;
-use App\Http\Controllers\Api\PayrollCycleController;
-use App\Http\Controllers\Api\TrainingCategoryController;
 use App\Http\Controllers\Api\RoleController;
-use App\Http\Controllers\Api\PayrollModifierController;
-use App\Http\Controllers\Api\PayrollSettingsController;
-use App\Http\Controllers\Api\PayrollController;
 use App\Http\Controllers\Api\SalaryComponentController;
 use App\Http\Controllers\Api\SelfServiceAttendanceController;
 use App\Http\Controllers\Api\SelfServiceLeaveBalanceController;
@@ -51,17 +55,14 @@ use App\Http\Controllers\Api\SelfServiceProfileController;
 use App\Http\Controllers\Api\ShiftController;
 use App\Http\Controllers\Api\SiteController;
 use App\Http\Controllers\Api\SubscriptionPlanController;
+use App\Http\Controllers\Api\SubscriptionServiceController;
 use App\Http\Controllers\Api\TeamController;
-use App\Http\Controllers\Api\EquipmentAssignmentController;
-use App\Http\Controllers\Api\EquipmentController;
-use App\Http\Controllers\Api\EquipmentRequestController;
-use App\Http\Controllers\Api\CandidateController;
-use App\Http\Controllers\Api\JobOpeningController;
-use App\Http\Controllers\Api\TrainingController;
-use App\Http\Controllers\Api\TrainingEnrollmentController;
 use App\Http\Controllers\Api\TenantCompanyProfileController;
 use App\Http\Controllers\Api\TenantSubscriptionController;
-use App\Http\Controllers\Api\SubscriptionServiceController;
+use App\Http\Controllers\Api\TerminationTypeController;
+use App\Http\Controllers\Api\TrainingCategoryController;
+use App\Http\Controllers\Api\TrainingController;
+use App\Http\Controllers\Api\TrainingEnrollmentController;
 use App\Http\Controllers\Api\WhatsAppSettingsController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
 use Illuminate\Http\Request;
@@ -85,7 +86,7 @@ Route::prefix('v1')->group(function () {
     Route::get('webhooks/whatsapp', [WhatsAppWebhookController::class, 'verify']);
     Route::post('webhooks/whatsapp', [WhatsAppWebhookController::class, 'handle']);
 
-    Route::middleware('auth:sanctum')->group(function () {
+    Route::middleware(['auth:sanctum', 'company.active'])->group(function () {
         Route::post('auth/logout', [AuthController::class, 'logout']);
         Route::get('auth/me', [AuthController::class, 'me']);
 
@@ -126,14 +127,17 @@ Route::prefix('v1')->group(function () {
             Route::get('sites/{site}', [SiteController::class, 'show']);
             Route::get('departments', [DepartmentController::class, 'index']);
             Route::get('departments/{department}', [DepartmentController::class, 'show']);
-            Route::get('holidays', [HolidayController::class, 'index']);
-            Route::get('holidays/{holiday}', [HolidayController::class, 'show']);
             Route::get('teams', [TeamController::class, 'index']);
             Route::get('teams/{team}', [TeamController::class, 'show']);
             Route::get('designations', [DesignationController::class, 'index']);
             Route::get('designations/{designation}', [DesignationController::class, 'show']);
             Route::get('shifts', [ShiftController::class, 'index']);
             Route::get('shifts/{shift}', [ShiftController::class, 'show']);
+        });
+
+        Route::middleware('permission:attendance.manage|organization.manage|self_service.access')->group(function () {
+            Route::get('holidays', [HolidayController::class, 'index']);
+            Route::get('holidays/{holiday}', [HolidayController::class, 'show']);
         });
 
         Route::middleware('permission:organization.manage')->group(function () {
@@ -167,12 +171,18 @@ Route::prefix('v1')->group(function () {
 
         Route::middleware('permission:employees.manage')->group(function () {
             Route::post('employees/import', [EmployeeController::class, 'import']);
+            Route::post('employees/{employee}/avatar', [EmployeeController::class, 'updateAvatar']);
             Route::post('employees/bulk-status', [EmployeeController::class, 'bulkStatus']);
             Route::apiResource('employees', EmployeeController::class)->only(['store', 'destroy']);
             Route::patch('employees/{employee}/status', [EmployeeController::class, 'toggleStatus']);
             Route::post('employees/{employee}/suspend', [EmployeeController::class, 'suspend']);
             Route::post('employees/{employee}/terminate', [EmployeeController::class, 'terminate']);
             Route::post('employees/{employee}/retire', [EmployeeController::class, 'retire']);
+            Route::get('employees/{employee}/onboarding', [EmployeeOnboardingController::class, 'index']);
+            Route::patch(
+                'employees/{employee}/onboarding/{task}',
+                [EmployeeOnboardingController::class, 'updateTask']
+            );
             Route::post('employees/{employee}/structure', [EmployeeStructureController::class, 'store']);
             Route::post('employees/{employee}/document-templates/preview', [DocumentTemplateController::class, 'preview']);
             Route::post('employees/{employee}/document-templates/generate', [DocumentTemplateController::class, 'generate']);
@@ -220,8 +230,12 @@ Route::prefix('v1')->group(function () {
                 ->parameters(['attendance-records' => 'attendance_record'])
                 ->only(['index', 'store', 'update', 'destroy']);
 
-            Route::apiResource('regularizations', RegularizationController::class);
             Route::patch('regularizations/{regularization}/status', [RegularizationController::class, 'updateStatus']);
+        });
+
+        Route::middleware('permission:attendance.manage|self_service.access')->group(function () {
+            Route::apiResource('regularizations', RegularizationController::class)
+                ->only(['index', 'store', 'show', 'update', 'destroy']);
         });
 
         Route::middleware('permission:leave.manage|self_service.access')->group(function () {
@@ -278,14 +292,43 @@ Route::prefix('v1')->group(function () {
             Route::put('leave-balances/{employeeCode}/initial', [LeaveBalanceController::class, 'setInitial']);
         });
 
-        Route::middleware('permission:organization.manage|employees.manage')->group(function () {
-            Route::apiResource('trainings', TrainingController::class);
+        Route::middleware('permission:organization.manage|employees.manage|self_service.access')->group(function () {
+            Route::apiResource('trainings', TrainingController::class)->only(['index', 'show']);
             Route::apiResource('training-enrollments', TrainingEnrollmentController::class)
                 ->parameters(['training-enrollments' => 'training_enrollment'])
                 ->only(['index', 'store', 'show', 'destroy']);
+        });
+
+        Route::middleware('permission:organization.manage|employees.manage')->group(function () {
+            Route::apiResource('trainings', TrainingController::class)->except(['index', 'show']);
             Route::patch(
                 'training-enrollments/{training_enrollment}/status',
                 [TrainingEnrollmentController::class, 'updateStatus']
+            );
+        });
+
+        Route::middleware('permission:organization.manage|employees.manage|self_service.access')->group(function () {
+            Route::apiResource('equipments', EquipmentController::class)->only(['index', 'show']);
+            Route::apiResource('equipment-requests', EquipmentRequestController::class)
+                ->parameters(['equipment-requests' => 'equipment_request'])
+                ->only(['index', 'store', 'show', 'destroy']);
+            Route::get('equipment-assignments', [EquipmentAssignmentController::class, 'index']);
+            Route::get('equipment-assignments/{equipment_assignment}', [EquipmentAssignmentController::class, 'show']);
+            Route::post(
+                'equipment-assignments/{equipment_assignment}/report-issue',
+                [EquipmentAssignmentController::class, 'reportIssue']
+            );
+        });
+
+        Route::middleware('permission:organization.manage|employees.manage')->group(function () {
+            Route::apiResource('equipments', EquipmentController::class)->except(['index', 'show']);
+            Route::patch(
+                'equipment-requests/{equipment_request}/status',
+                [EquipmentRequestController::class, 'updateStatus']
+            );
+            Route::patch(
+                'equipment-assignments/{equipment_assignment}/return',
+                [EquipmentAssignmentController::class, 'returnItem']
             );
 
             Route::apiResource('job-openings', JobOpeningController::class)
@@ -293,25 +336,11 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('candidates', CandidateController::class);
             Route::patch('candidates/{candidate}/stage', [CandidateController::class, 'updateStage']);
             Route::patch('candidates/{candidate}/status', [CandidateController::class, 'updateStage']);
+            Route::middleware('permission:employees.manage')->post(
+                'candidates/{candidate}/hire',
+                [CandidateController::class, 'hire']
+            );
 
-            Route::apiResource('equipments', EquipmentController::class);
-            Route::apiResource('equipment-requests', EquipmentRequestController::class)
-                ->parameters(['equipment-requests' => 'equipment_request'])
-                ->only(['index', 'store', 'show', 'destroy']);
-            Route::patch(
-                'equipment-requests/{equipment_request}/status',
-                [EquipmentRequestController::class, 'updateStatus']
-            );
-            Route::get('equipment-assignments', [EquipmentAssignmentController::class, 'index']);
-            Route::get('equipment-assignments/{equipment_assignment}', [EquipmentAssignmentController::class, 'show']);
-            Route::post(
-                'equipment-assignments/{equipment_assignment}/report-issue',
-                [EquipmentAssignmentController::class, 'reportIssue']
-            );
-            Route::patch(
-                'equipment-assignments/{equipment_assignment}/return',
-                [EquipmentAssignmentController::class, 'returnItem']
-            );
         });
 
         Route::middleware('permission:tenant.portal')->group(function () {
@@ -338,7 +367,8 @@ Route::prefix('v1')->group(function () {
             Route::patch('attendance-types/{attendance_type}/status', [AttendanceTypeController::class, 'toggleStatus']);
 
             Route::apiResource('regularization-types', RegularizationTypeController::class)
-                ->parameter('regularization-types', 'regularization_type');
+                ->parameter('regularization-types', 'regularization_type')
+                ->except(['index', 'show']);
             Route::patch('regularization-types/{regularization_type}/status', [RegularizationTypeController::class, 'toggleStatus']);
 
             Route::apiResource('day-types', DayTypeController::class)
@@ -368,12 +398,23 @@ Route::prefix('v1')->group(function () {
             Route::patch('payroll-cycles/{payroll_cycle}/status', [PayrollCycleController::class, 'toggleStatus']);
 
             Route::apiResource('training-categories', TrainingCategoryController::class)
-                ->parameter('training-categories', 'training_category');
+                ->parameter('training-categories', 'training_category')
+                ->except(['index', 'show']);
             Route::patch('training-categories/{training_category}/status', [TrainingCategoryController::class, 'toggleStatus']);
 
             Route::apiResource('equipment-categories', EquipmentCategoryController::class)
-                ->parameter('equipment-categories', 'equipment_category');
+                ->parameter('equipment-categories', 'equipment_category')
+                ->except(['index', 'show']);
             Route::patch('equipment-categories/{equipment_category}/status', [EquipmentCategoryController::class, 'toggleStatus']);
+        });
+
+        Route::middleware('permission:settings.manage|self_service.access')->group(function () {
+            Route::get('regularization-types', [RegularizationTypeController::class, 'index']);
+            Route::get('regularization-types/{regularization_type}', [RegularizationTypeController::class, 'show']);
+            Route::get('training-categories', [TrainingCategoryController::class, 'index']);
+            Route::get('training-categories/{training_category}', [TrainingCategoryController::class, 'show']);
+            Route::get('equipment-categories', [EquipmentCategoryController::class, 'index']);
+            Route::get('equipment-categories/{equipment_category}', [EquipmentCategoryController::class, 'show']);
         });
 
         Route::middleware('permission:platform.roles|employees.manage|employees.view')->group(function () {
@@ -396,7 +437,8 @@ Route::prefix('v1')->group(function () {
 
             Route::get('entity-statuses/catalogs', [EntityStatusController::class, 'catalogs']);
             Route::apiResource('entity-statuses', EntityStatusController::class)
-                ->parameter('entity-statuses', 'entity_status');
+                ->parameter('entity-statuses', 'entity_status')
+                ->except(['index']);
             Route::patch('entity-statuses/{entity_status}/status', [EntityStatusController::class, 'toggleStatus']);
 
             Route::post('countries', [CountryController::class, 'store']);
@@ -416,6 +458,8 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('legal-taxes', LegalTaxController::class)
                 ->parameter('legal-taxes', 'legal_tax');
         });
+
+        Route::get('entity-statuses', [EntityStatusController::class, 'index']);
 
         // Lecture des obligations (référentiel échéances) — tenant + plateforme
         Route::middleware('permission:tenant.portal|platform.manage')->group(function () {

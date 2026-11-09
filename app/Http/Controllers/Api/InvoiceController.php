@@ -14,9 +14,9 @@ use App\Http\Resources\InvoiceResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class InvoiceController extends Controller
 {
@@ -72,7 +72,7 @@ class InvoiceController extends Controller
         return new InvoiceResource($settled);
     }
 
-    public function paymentProof(Invoice $invoice): HttpResponse
+    public function paymentProof(Invoice $invoice): StreamedResponse
     {
         abort_unless($invoice->payment_proof_path, Response::HTTP_NOT_FOUND);
 

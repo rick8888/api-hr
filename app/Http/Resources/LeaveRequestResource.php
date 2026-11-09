@@ -22,6 +22,7 @@ class LeaveRequestResource extends JsonResource
             'employee_name' => $employee
                 ? trim(($employee->first_name ?? '').' '.($employee->last_name ?? ''))
                 : null,
+            'employee_avatar_url' => EmployeeAvatarUrl::for($employee, $request),
             'employee_code' => $employee?->matricule,
             'department' => $employee?->department,
             'leave_type' => $this->leave_type,

@@ -24,6 +24,7 @@ class EquipmentRequestResource extends JsonResource
             'employee_name' => $employee
                 ? trim(($employee->first_name ?? '').' '.($employee->last_name ?? ''))
                 : null,
+            'employee_avatar_url' => EmployeeAvatarUrl::for($employee, $request),
             'equipment_name' => $equipment?->name,
             'quantity' => (int) $this->quantity,
             'priority' => $this->priority,

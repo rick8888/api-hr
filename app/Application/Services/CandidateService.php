@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Application\Services;
 
 use App\Application\DTO\Recruitment\CandidateData;
+use App\Domain\Platform\Support\EntityStatusCatalog;
 use App\Domain\Recruitment\Models\Candidate;
 use App\Domain\Recruitment\Repositories\CandidateRepositoryInterface;
 use App\Domain\Recruitment\Repositories\JobOpeningRepositoryInterface;
-use App\Domain\Platform\Support\EntityStatusCatalog;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Collection;
@@ -20,9 +20,10 @@ final class CandidateService
     public function __construct(
         private readonly CandidateRepositoryInterface $repository,
         private readonly JobOpeningRepositoryInterface $jobOpenings,
+        private readonly EmployeeService $employees,
         private readonly AuditLogger $audit,
-    ) {
-    }
+        private readonly EmployeeOnboardingService $onboarding,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $filters
@@ -83,6 +84,12 @@ final class CandidateService
         $companyId = $this->resolveCompanyId($actor, write: true);
         $this->ensureBelongsToCompany($candidate, $companyId);
 
+        if ($candidate->hired_employee_id !== null) {
+            throw ValidationException::withMessages([
+                'candidate' => 'Un candidat embauché ne peut plus être modifié dans le parcours de recrutement.',
+            ]);
+        }
+
         if (isset($validated['status']) && ! isset($validated['stage'])) {
             $validated['stage'] = $validated['status'];
         }
@@ -103,6 +110,7 @@ final class CandidateService
         ], $validated));
 
         $this->assertValidStage($data->stage);
+        $this->assertNotHiredStage($data->stage);
 
         if ($data->jobOpeningId !== null) {
             $job = $this->jobOpenings->findForCompany($data->jobOpeningId, $companyId);
@@ -128,6 +136,13 @@ final class CandidateService
 
         $normalized = CandidateData::normalizeStage($stage);
         $this->assertValidStage($normalized);
+        $this->assertNotHiredStage($normalized);
+
+        if ($candidate->hired_employee_id !== null) {
+            throw ValidationException::withMessages([
+                'candidate' => 'Un candidat embauché ne peut plus être modifié dans le parcours de recrutement.',
+            ]);
+        }
 
         return DB::transaction(function () use ($candidate, $normalized) {
             $updated = $this->repository->update($candidate, [
@@ -142,10 +157,80 @@ final class CandidateService
         });
     }
 
+    /** @param array<string, mixed> $validated */
+    public function hireForActor(User $actor, Candidate $candidate, array $validated): Candidate
+    {
+        $companyId = $this->resolveCompanyId($actor, write: true);
+        $this->ensureBelongsToCompany($candidate, $companyId);
+
+        return DB::transaction(function () use ($actor, $candidate, $validated, $companyId) {
+            $lockedCandidate = Candidate::query()
+                ->where('company_id', $companyId)
+                ->lockForUpdate()
+                ->findOrFail($candidate->id);
+
+            if ($lockedCandidate->stage !== 'offer' || $lockedCandidate->hired_employee_id !== null) {
+                throw ValidationException::withMessages([
+                    'candidate' => 'Seul un candidat ayant reçu une offre peut être embauché.',
+                ]);
+            }
+
+            $opening = $lockedCandidate->jobOpening;
+            if ($opening !== null && (int) $opening->company_id !== $companyId) {
+                throw ValidationException::withMessages([
+                    'job_opening_id' => 'L’offre liée au candidat n’appartient pas à cette entreprise.',
+                ]);
+            }
+
+            $employee = $this->employees->createForActor($actor, [
+                'first_name' => $validated['first_name'],
+                'last_name' => $validated['last_name'],
+                'matricule' => $validated['matricule'],
+                'email' => $lockedCandidate->email,
+                'phone' => $lockedCandidate->phone,
+                'job_title' => $lockedCandidate->position
+                    ?: $opening?->designation?->name
+                    ?: $opening?->title,
+                'department' => $opening?->department
+                    ?: $opening?->designation?->department?->name,
+                'hired_at' => $validated['hired_at'],
+                'contract_type' => $validated['contract_type'],
+                'base_salary' => $validated['base_salary'] ?? 0,
+                'currency' => $validated['currency'] ?? null,
+                'is_active' => true,
+                'create_user' => false,
+                'metadata' => [
+                    'employment_status' => 'onboarding',
+                    'onboarding_started_at' => now()->toIso8601String(),
+                    'candidate_id' => $lockedCandidate->id,
+                ],
+            ]);
+
+            $this->onboarding->start($employee);
+            $updated = $this->repository->update($lockedCandidate, [
+                'stage' => 'hired',
+                'hired_employee_id' => $employee->id,
+                'last_action' => 'Candidat embauché et parcours d’intégration créé',
+            ]);
+            $this->audit->log('candidate.hired', $updated, [
+                'employee_id' => $employee->id,
+                'matricule' => $employee->matricule,
+            ]);
+
+            return $updated->load(['hiredEmployee', 'jobOpening.designation.department']);
+        });
+    }
+
     public function deleteForActor(User $actor, Candidate $candidate): bool
     {
         $companyId = $this->resolveCompanyId($actor, write: true);
         $this->ensureBelongsToCompany($candidate, $companyId);
+
+        if ($candidate->hired_employee_id !== null) {
+            throw ValidationException::withMessages([
+                'candidate' => 'Un candidat embauché ne peut pas être supprimé du parcours de recrutement.',
+            ]);
+        }
 
         return DB::transaction(function () use ($candidate) {
             $this->audit->log('candidate.deleted', $candidate, ['name' => $candidate->name]);
@@ -184,6 +269,15 @@ final class CandidateService
     {
         if (! EntityStatusCatalog::contains('candidates', $stage, Candidate::STAGES)) {
             throw ValidationException::withMessages(['stage' => 'Étape invalide.']);
+        }
+    }
+
+    private function assertNotHiredStage(string $stage): void
+    {
+        if ($stage === 'hired') {
+            throw ValidationException::withMessages([
+                'stage' => 'Utilisez l’action d’embauche pour créer le dossier employé.',
+            ]);
         }
     }
 }

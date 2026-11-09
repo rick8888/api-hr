@@ -53,6 +53,7 @@ class Employee extends Model
         'base_salary',
         'currency',
         'metadata',
+        'avatar_path',
         'is_active',
     ];
 
@@ -91,6 +92,11 @@ class Employee extends Model
     public function payrollModifiers(): HasMany
     {
         return $this->hasMany(PayrollModifier::class);
+    }
+
+    public function onboardingTasks(): HasMany
+    {
+        return $this->hasMany(EmployeeOnboardingTask::class);
     }
 
     public function getFullNameAttribute(): string

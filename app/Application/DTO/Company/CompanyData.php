@@ -37,7 +37,7 @@ final class CompanyData
             'email' => $this->email,
             'phone' => $this->phone,
             'address' => $this->address,
-            'currency' => $this->currency,
+            'currency' => $this->currency !== null ? strtoupper(trim($this->currency)) : null,
             'is_active' => $this->isActive,
             'settings' => $this->settings,
         ];

@@ -14,6 +14,7 @@ use App\Http\Requests\Employee\ImportEmployeeRequest;
 use App\Http\Requests\Employee\StoreEmployeeRequest;
 use App\Http\Requests\Employee\SuspendEmployeeRequest;
 use App\Http\Requests\Employee\TerminateEmployeeRequest;
+use App\Http\Requests\Employee\UpdateEmployeeAvatarRequest;
 use App\Http\Requests\Employee\UpdateEmployeeRequest;
 use App\Http\Resources\EmployeeResource;
 use Illuminate\Http\JsonResponse;
@@ -73,6 +74,19 @@ class EmployeeController extends Controller
             $request->user(),
             $employee,
             $request->validated()
+        );
+
+        return new EmployeeResource($updated);
+    }
+
+    public function updateAvatar(
+        UpdateEmployeeAvatarRequest $request,
+        Employee $employee,
+    ): EmployeeResource {
+        $updated = $this->service->updateAvatarForActor(
+            $request->user(),
+            $employee,
+            $request->file('avatar'),
         );
 
         return new EmployeeResource($updated);

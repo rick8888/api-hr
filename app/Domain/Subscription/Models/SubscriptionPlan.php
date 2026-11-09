@@ -15,6 +15,7 @@ class SubscriptionPlan extends Model
         'tagline',
         'price_monthly',
         'currency',
+        'currency_prices',
         'max_users',
         'max_employees',
         'storage_gb',
@@ -29,6 +30,7 @@ class SubscriptionPlan extends Model
     {
         return [
             'price_monthly' => 'decimal:2',
+            'currency_prices' => 'array',
             'max_users' => 'integer',
             'max_employees' => 'integer',
             'storage_gb' => 'integer',

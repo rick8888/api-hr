@@ -7,6 +7,7 @@ namespace App\Domain\Company\Models;
 use App\Domain\Employee\Models\Employee;
 use App\Domain\Subscription\Models\Subscription;
 use App\Domain\Tax\Models\CompanyTax;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -59,5 +60,10 @@ class Company extends Model
     public function subscriptions(): HasMany
     {
         return $this->hasMany(Subscription::class);
+    }
+
+    public function users(): HasMany
+    {
+        return $this->hasMany(User::class);
     }
 }

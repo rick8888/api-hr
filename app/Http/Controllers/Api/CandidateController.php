@@ -8,6 +8,7 @@ use App\Application\DTO\Recruitment\CandidateData;
 use App\Application\Services\CandidateService;
 use App\Domain\Recruitment\Models\Candidate;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Recruitment\HireCandidateRequest;
 use App\Http\Requests\Recruitment\StoreCandidateRequest;
 use App\Http\Requests\Recruitment\UpdateCandidateRequest;
 use App\Http\Requests\Recruitment\UpdateCandidateStageRequest;
@@ -19,9 +20,7 @@ use Symfony\Component\HttpFoundation\Response;
 
 class CandidateController extends Controller
 {
-    public function __construct(private readonly CandidateService $service)
-    {
-    }
+    public function __construct(private readonly CandidateService $service) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -77,6 +76,17 @@ class CandidateController extends Controller
         );
 
         return new CandidateResource($updated);
+    }
+
+    public function hire(HireCandidateRequest $request, Candidate $candidate): CandidateResource
+    {
+        return new CandidateResource(
+            $this->service->hireForActor(
+                $request->user(),
+                $candidate,
+                $request->validated(),
+            )
+        );
     }
 
     public function destroy(Request $request, Candidate $candidate): JsonResponse

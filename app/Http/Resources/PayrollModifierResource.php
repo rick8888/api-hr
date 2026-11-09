@@ -37,6 +37,7 @@ class PayrollModifierResource extends JsonResource
                 'name' => trim($employee->first_name.' '.$employee->last_name),
                 'matricule' => $employee->matricule,
                 'email' => $employee->email,
+                'avatar_url' => EmployeeAvatarUrl::for($employee, $request),
             ] : null,
             'created_at' => optional($this->created_at)->toIso8601String(),
             'updated_at' => optional($this->updated_at)->toIso8601String(),

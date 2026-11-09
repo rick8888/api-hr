@@ -10,6 +10,7 @@ use App\Domain\Leave\Models\LeaveRequest;
 use App\Domain\Organization\Models\Holiday;
 use App\Domain\Recruitment\Models\Candidate;
 use App\Domain\Recruitment\Models\JobOpening;
+use App\Http\Resources\EmployeeAvatarUrl;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -179,6 +180,7 @@ final class AdminDashboardService
             'id' => $record->id,
             'name' => $name,
             'initials' => $this->initials($first, $last, $name),
+            'avatar_url' => EmployeeAvatarUrl::for($employee, request()),
             'designation' => $designation ?: '—',
             'type' => $type,
             'check_in' => $this->formatTime12($record->check_in),

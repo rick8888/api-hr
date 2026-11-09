@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Recruitment\Models;
 
 use App\Domain\Company\Models\Company;
+use App\Domain\Employee\Models\Employee;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -25,6 +26,8 @@ class Candidate extends Model
     protected $fillable = [
         'company_id',
         'job_opening_id',
+        'hired_employee_id',
+        'hired_employee_id',
         'name',
         'email',
         'phone',
@@ -53,5 +56,10 @@ class Candidate extends Model
     public function jobOpening(): BelongsTo
     {
         return $this->belongsTo(JobOpening::class);
+    }
+
+    public function hiredEmployee(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class, 'hired_employee_id');
     }
 }

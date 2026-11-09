@@ -79,16 +79,8 @@ final class TenantSubscriptionService
             throw new InvalidArgumentException('Selected payment method is not available.');
         }
 
-        if ($paymentMethod === PaymentMethod::CODE_BANK_TRANSFER && $receipt === null) {
-            throw new InvalidArgumentException('A bank transfer receipt is required.');
-        }
-
-        if ($paymentMethod === PaymentMethod::CODE_CASH && $receipt !== null) {
-            throw new InvalidArgumentException('Cash payment requests do not accept a receipt upload.');
-        }
-
-        if ($paymentMethod === PaymentMethod::CODE_MOBILE_MONEY && $receipt !== null) {
-            throw new InvalidArgumentException('Mobile money requests do not accept a receipt upload.');
+        if ($receipt === null) {
+            throw new InvalidArgumentException('A payment receipt is required.');
         }
 
         $newPlan = SubscriptionPlan::query()
@@ -106,18 +98,23 @@ final class TenantSubscriptionService
         $currentSubscription = $this->resolveDisplaySubscription($company);
         $currentPlan = $currentSubscription?->plan ?? $this->resolveCurrentPlan($company);
 
-        if ($currentPlan !== null && $currentPlan->id === $newPlan->id) {
-            throw new InvalidArgumentException('You are already on this plan.');
-        }
+        $isRenewal = $currentPlan !== null && $currentPlan->id === $newPlan->id;
 
-        $amount = (float) $newPlan->price_monthly;
-        $currency = strtoupper((string) ($newPlan->currency ?: $company->currency ?: 'USD'));
+        $currency = $this->companyCurrency($company);
+        $amount = $this->planPrice($newPlan, $currency);
+        if ($amount === null) {
+            throw new InvalidArgumentException(
+                'Aucun tarif n’est configuré pour le plan '.$newPlan->name.' en '.$currency.'. Contactez le support.'
+            );
+        }
         $today = now()->toDateString();
         $periodEnd = now()->addMonth()->toDateString();
 
-        $description = $currentPlan !== null && ($currentPlan->sort_order > $newPlan->sort_order)
-            ? 'Change to '.$newPlan->name.' plan (Downgrade)'
-            : 'Change to '.$newPlan->name.' plan';
+        $description = $isRenewal
+            ? 'Renew '.$newPlan->name.' plan'
+            : ($currentPlan !== null && ($currentPlan->sort_order > $newPlan->sort_order)
+                ? 'Change to '.$newPlan->name.' plan (Downgrade)'
+                : 'Change to '.$newPlan->name.' plan');
 
         $notes = $this->buildPaymentNotes($payload, $paymentMethod);
 
@@ -168,9 +165,9 @@ final class TenantSubscriptionService
                 return [
                     'status' => 'pending_approval',
                     'message' => match ($paymentMethod) {
-                        PaymentMethod::CODE_BANK_TRANSFER => 'Transfer request and receipt submitted. The payment will be verified before your plan is activated.',
-                        PaymentMethod::CODE_MOBILE_MONEY => 'Mobile money payment request submitted. Our team will verify the payment before activating your plan.',
-                        default => 'Cash payment request submitted. The plan will be activated after the team confirms receipt.',
+                        PaymentMethod::CODE_BANK_TRANSFER => 'Votre demande et le justificatif de virement ont été envoyés. Le forfait sera activé après vérification du paiement.',
+                        PaymentMethod::CODE_MOBILE_MONEY => 'Votre demande et le justificatif de paiement mobile ont été envoyés. Le forfait sera activé après vérification.',
+                        default => 'Votre demande et le justificatif de paiement en espèces ont été envoyés. Le forfait sera activé après vérification.',
                     },
                     'payment_method' => $paymentMethod,
                     'simulation' => false,
@@ -249,6 +246,20 @@ final class TenantSubscriptionService
         $endsAt = optional($invoice->period_end)->toDateString();
 
         $this->activateForCompany($company, $plan, $startsAt, $endsAt);
+        $this->reactivateCompanyForInForceSubscription($company);
+    }
+
+    public function reactivateCompanyForInForceSubscription(Company $company): bool
+    {
+        if ($this->resolveInForceSubscription($company) === null) {
+            return false;
+        }
+
+        if (! $company->is_active) {
+            $company->update(['is_active' => true]);
+        }
+
+        return true;
     }
 
     /**
@@ -414,9 +425,11 @@ final class TenantSubscriptionService
     public function getForActor(User $actor): array
     {
         $company = $this->resolveCompany($actor);
+        $currency = $this->companyCurrency($company);
         $settings = is_array($company->settings) ? $company->settings : [];
         $subdomain = (string) ($settings['subdomain'] ?? strtolower((string) $company->code));
 
+        $inForceSubscription = $this->resolveInForceSubscription($company);
         $currentSubscription = $this->resolveDisplaySubscription($company);
         $currentPlan = $currentSubscription?->plan ?? $this->resolveCurrentPlan($company);
 
@@ -435,9 +448,22 @@ final class TenantSubscriptionService
         $planByCode = $allPlans->keyBy('code');
 
         return [
-            'current' => $this->formatCurrent($company, $currentPlan, $subdomain, $currentSubscription, $invoices),
+            'current' => $this->formatCurrent(
+                $company,
+                $currentPlan,
+                $subdomain,
+                $currentSubscription,
+                $invoices,
+                $inForceSubscription !== null,
+                $currency,
+            ),
             'plans' => $availablePlans
-                ->map(fn (SubscriptionPlan $plan) => $this->formatPlanCard($plan, $currentPlan))
+                ->map(fn (SubscriptionPlan $plan) => $this->formatPlanCard(
+                    $plan,
+                    $currentPlan,
+                    $inForceSubscription !== null,
+                    $currency,
+                ))
                 ->values()
                 ->all(),
             'history' => $invoices
@@ -455,10 +481,12 @@ final class TenantSubscriptionService
     public function dashboardForActor(User $actor): array
     {
         $company = $this->resolveCompany($actor);
+        $currency = $this->companyCurrency($company);
         $settings = is_array($company->settings) ? $company->settings : [];
         $subdomain = (string) ($settings['subdomain'] ?? strtolower((string) $company->code));
 
-        $subscription = $this->resolveDisplaySubscription($company);
+        $inForceSubscription = $this->resolveInForceSubscription($company);
+        $subscription = $inForceSubscription ?? $this->resolveDisplaySubscription($company);
         $plan = $subscription?->plan ?? $this->resolveCurrentPlan($company);
 
         $invoices = Invoice::query()
@@ -482,15 +510,16 @@ final class TenantSubscriptionService
         $subscriptionStatus = match ($subscription?->status) {
             Subscription::STATUS_CANCELLED => 'Cancelled',
             Subscription::STATUS_EXPIRED => 'Expired',
-            default => $company->is_active ? 'Active' : 'Suspended',
+            default => $inForceSubscription !== null ? 'Active' : ($company->is_active ? 'Inactive' : 'Suspended'),
         };
 
         $usersCount = $this->planQuotas->usersUsed((int) $company->id);
+        $planPrice = $plan !== null ? $this->planPrice($plan, $currency) : null;
 
         $nextPaymentAmount = $pendingInvoice !== null
             ? $this->formatPrice((float) $pendingInvoice->amount, $pendingInvoice->currency)
-            : ($plan !== null
-                ? $this->formatPrice((float) $plan->price_monthly, $plan->currency)
+            : ($planPrice !== null
+                ? $this->formatPrice($planPrice, $currency)
                 : '—');
 
         $firstName = trim((string) strtok((string) $actor->name, ' '));
@@ -511,8 +540,8 @@ final class TenantSubscriptionService
             'users_count' => $usersCount,
             'users_allowed' => $usersAllowed,
             'users_allowed_label' => $usersAllowed === null ? 'Unlimited' : (string) $usersAllowed,
-            'price_label' => $plan !== null
-                ? $this->formatPrice((float) $plan->price_monthly, $plan->currency).'/Monthly'
+            'price_label' => $planPrice !== null
+                ? $this->formatPrice($planPrice, $currency).'/Monthly'
                 : '—',
             'started_date' => $this->formatDate($subscription?->starts_at ?? $company->created_at),
             'next_billing_date' => $nextBilling ? $this->formatDate($nextBilling) : '—',
@@ -527,6 +556,7 @@ final class TenantSubscriptionService
     public function usageForActor(User $actor): array
     {
         $company = $this->resolveCompany($actor);
+        $currency = $this->companyCurrency($company);
         $subscription = $this->resolveDisplaySubscription($company);
         $plan = $subscription?->plan ?? $this->resolveCurrentPlan($company);
 
@@ -548,13 +578,14 @@ final class TenantSubscriptionService
 
         // Stockage réel non encore instrumenté (pas de taille fichier en base).
         $storageUsedGb = 0.0;
+        $planPrice = $plan !== null ? $this->planPrice($plan, $currency) : null;
 
         return [
             'plan' => [
                 'name' => $plan?->name ?? '—',
                 'tagline' => $plan?->tagline ?? '',
-                'price' => $plan !== null
-                    ? $this->formatPrice((float) $plan->price_monthly, $plan->currency)
+                'price' => $planPrice !== null
+                    ? $this->formatPrice($planPrice, $currency)
                     : '—',
                 'cadence' => 'per monthly',
                 'renews_on' => $nextBilling ? $this->formatDate($nextBilling) : null,
@@ -698,7 +729,7 @@ final class TenantSubscriptionService
     public function billingsForActor(User $actor): array
     {
         $company = $this->resolveCompany($actor);
-        $currency = strtoupper((string) ($company->currency ?: 'USD'));
+        $currency = $this->companyCurrency($company);
 
         $plans = SubscriptionPlan::query()
             ->where('is_active', true)
@@ -954,6 +985,34 @@ final class TenantSubscriptionService
         return $this->planQuotas->planForCompany($company);
     }
 
+    private function companyCurrency(Company $company): string
+    {
+        $company->loadMissing('country');
+
+        return strtoupper((string) (
+            $company->currency
+            ?: $company->country?->currency
+            ?: config('currency.default', 'USD')
+        ));
+    }
+
+    private function planPrice(SubscriptionPlan $plan, string $currency): ?float
+    {
+        $prices = is_array($plan->currency_prices) ? $plan->currency_prices : [];
+        $currency = strtoupper($currency);
+        foreach ($prices as $code => $amount) {
+            if (strtoupper((string) $code) === $currency) {
+                return (float) $amount;
+            }
+        }
+
+        if (strtoupper((string) $plan->currency) === $currency) {
+            return (float) $plan->price_monthly;
+        }
+
+        return null;
+    }
+
     /** @param Collection<int, Invoice> $invoices */
     private function formatCurrent(
         Company $company,
@@ -961,6 +1020,8 @@ final class TenantSubscriptionService
         string $subdomain,
         ?Subscription $subscription,
         Collection $invoices,
+        bool $hasActiveSubscription,
+        string $currency,
     ): array {
         $pendingInvoice = $invoices->first(
             fn (Invoice $invoice) => in_array($invoice->status, [Invoice::STATUS_PENDING, Invoice::STATUS_DRAFT], true)
@@ -973,36 +1034,48 @@ final class TenantSubscriptionService
         $subscriptionStatus = match ($subscription?->status) {
             Subscription::STATUS_CANCELLED => 'Cancelled',
             Subscription::STATUS_EXPIRED => 'Expired',
-            default => $company->is_active ? 'Active' : 'Suspended',
+            default => $hasActiveSubscription ? 'Active' : ($company->is_active ? 'Inactive' : 'Suspended'),
         };
 
         return [
+            'has_active_subscription' => $hasActiveSubscription,
             'plan_name' => $plan?->name ?? (string) ((is_array($company->settings) ? $company->settings['plan'] : null) ?? '—'),
             'plan_code' => $plan?->code,
             'status' => $subscriptionStatus,
-            'price' => $plan !== null
-                ? $this->formatPrice((float) $plan->price_monthly, $plan->currency).'/monthly'
+            'currency' => $currency,
+            'price' => $plan !== null && ($price = $this->planPrice($plan, $currency)) !== null
+                ? $this->formatPrice($price, $currency).'/monthly'
                 : '—',
             'started_date' => $this->formatDate($subscription?->starts_at ?? $company->created_at),
             'application_url' => 'https://'.$subdomain.'.opencorebs.com',
             'next_billing_date' => $nextBilling ? $this->formatDate($nextBilling) : '—',
             'features' => $plan !== null ? $this->buildFeatures($plan) : [],
-            'can_cancel' => $subscription !== null && $subscription->status === Subscription::STATUS_ACTIVE,
+            'can_cancel' => $hasActiveSubscription,
         ];
     }
 
-    private function formatPlanCard(SubscriptionPlan $plan, ?SubscriptionPlan $currentPlan): array
+    private function formatPlanCard(
+        SubscriptionPlan $plan,
+        ?SubscriptionPlan $currentPlan,
+        bool $hasActiveSubscription,
+        string $currency,
+    ): array
     {
         $isCurrent = $currentPlan !== null && $currentPlan->id === $plan->id;
         $currentOrder = $currentPlan?->sort_order ?? 0;
+        $price = $this->planPrice($plan, $currency);
+        $priceAvailable = $price !== null;
 
         $ctaLabel = 'Choose Plan';
         if ($isCurrent) {
-            $ctaLabel = 'Current Plan';
+            $ctaLabel = $hasActiveSubscription ? 'Current Plan' : 'Renew';
         } elseif ($plan->sort_order > $currentOrder) {
             $ctaLabel = 'Upgrade';
         } elseif ($plan->sort_order < $currentOrder) {
             $ctaLabel = 'Downgrade';
+        }
+        if (! $priceAvailable) {
+            $ctaLabel = 'Price unavailable';
         }
 
         return [
@@ -1010,9 +1083,10 @@ final class TenantSubscriptionService
             'plan_id' => $plan->id,
             'code' => $plan->code,
             'name' => $plan->name,
-            'price' => $this->formatPrice((float) $plan->price_monthly, $plan->currency),
-            'price_monthly' => (float) $plan->price_monthly,
-            'currency' => $plan->currency,
+            'price' => $priceAvailable ? $this->formatPrice($price, $currency) : '—',
+            'price_monthly' => $price,
+            'currency' => $currency,
+            'price_available' => $priceAvailable,
             'cadence' => '/monthly',
             'tagline' => $plan->tagline,
             'badge' => $plan->is_highlighted ? 'Most Popular' : null,
@@ -1021,8 +1095,8 @@ final class TenantSubscriptionService
             'is_current' => $isCurrent,
             'cta' => [
                 'label' => $ctaLabel,
-                'disabled' => $isCurrent,
-                'variant' => $isCurrent ? null : 'primary',
+                'disabled' => ! $priceAvailable || ($isCurrent && $hasActiveSubscription),
+                'variant' => $priceAvailable && ! ($isCurrent && $hasActiveSubscription) ? 'primary' : null,
             ],
         ];
     }

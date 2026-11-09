@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace App\Http\Resources;
 
+use App\Domain\Employee\Models\Employee;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Domain\Employee\Models\Employee */
+/** @mixin Employee */
 class EmployeeResource extends JsonResource
 {
     /** @return array<string, mixed> */
@@ -15,7 +16,6 @@ class EmployeeResource extends JsonResource
     {
         $status = $this->resolveStatus();
         $metadata = is_array($this->metadata) ? $this->metadata : [];
-
         return [
             'id' => $this->id,
             'company_id' => $this->company_id,
@@ -49,11 +49,16 @@ class EmployeeResource extends JsonResource
             'probation_notes' => $metadata['probation_notes'] ?? null,
             'contract_type' => $this->contract_type,
             'base_salary' => (float) $this->base_salary,
-            'currency' => $this->currency,
+            'currency' => $this->currency
+                ?: $this->company?->currency
+                ?: $this->company?->country?->currency
+                ?: $this->country?->currency
+                ?: config('currency.default', 'USD'),
             'hired_at' => optional($this->hired_at)->toDateString(),
             'joinDate' => optional($this->hired_at)->toDateString(),
             'terminated_at' => optional($this->terminated_at)->toDateString(),
             'metadata' => $metadata,
+            'avatar_url' => EmployeeAvatarUrl::for($this->resource, $request),
             'is_active' => (bool) $this->is_active,
             'active' => (bool) $this->is_active,
             'status' => $status,
@@ -76,6 +81,11 @@ class EmployeeResource extends JsonResource
 
         if ($this->isRetired()) {
             return 'retired';
+        }
+
+        $metadata = is_array($this->metadata) ? $this->metadata : [];
+        if (($metadata['employment_status'] ?? null) === 'onboarding') {
+            return 'onboarding';
         }
 
         return $this->is_active ? 'active' : 'inactive';

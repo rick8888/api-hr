@@ -5,17 +5,28 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Application\Services\PayrollService;
+use App\Domain\Attendance\Models\AttendanceBreak;
 use App\Domain\Attendance\Models\AttendanceRecord;
+use App\Domain\Attendance\Models\Regularization;
 use App\Domain\Attendance\Models\Shift;
 use App\Domain\Company\Models\Company;
 use App\Domain\Company\Models\Country;
+use App\Domain\DocumentRequest\Models\DocumentRequest;
 use App\Domain\Employee\Models\Employee;
+use App\Domain\EmployeeDocument\Models\EmployeeDocument;
+use App\Domain\Equipment\Models\Equipment;
+use App\Domain\Equipment\Models\EquipmentAssignment;
+use App\Domain\Equipment\Models\EquipmentRequest;
 use App\Domain\Expense\Models\Expense;
+use App\Domain\Leave\Models\CompensatoryOff;
 use App\Domain\Leave\Models\LeaveBalance;
+use App\Domain\Leave\Models\LeaveBalanceAdjustment;
 use App\Domain\Leave\Models\LeaveRequest;
 use App\Domain\Leave\Models\LeaveType;
 use App\Domain\Loan\Models\Loan;
 use App\Domain\Organization\Models\Department;
+use App\Domain\Organization\Models\Designation;
+use App\Domain\Organization\Models\Holiday;
 use App\Domain\Organization\Models\Site;
 use App\Domain\Organization\Models\Team;
 use App\Domain\Payroll\Models\EmployeeSalaryStructure;
@@ -26,6 +37,7 @@ use App\Domain\Training\Models\TrainingEnrollment;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
+use RuntimeException;
 
 final class DemoHrDataSeeder extends Seeder
 {
@@ -49,6 +61,8 @@ final class DemoHrDataSeeder extends Seeder
             ['company_id' => $company->id, 'code' => 'PRODUCT'],
             ['name' => 'Équipe Produit', 'description' => 'Équipe de démonstration', 'is_active' => true],
         );
+
+        $this->seedDesignationsAndHolidays($company);
 
         $site = Site::query()->updateOrCreate(
             ['company_id' => $company->id, 'code' => 'CASA-HQ'],
@@ -115,7 +129,16 @@ final class DemoHrDataSeeder extends Seeder
             ],
         ];
 
-        $employees = collect([Employee::query()->where('matricule', 'EMP-0001')->firstOrFail()]);
+        $employees = collect();
+        $primaryEmployee = Employee::query()
+            ->where('company_id', $company->id)
+            ->where('matricule', 'EMP-0001')
+            ->first();
+
+        if ($primaryEmployee !== null) {
+            $employees->push($primaryEmployee);
+        }
+
         foreach ($employeeData as $data) {
             $employee = Employee::query()->updateOrCreate(
                 ['matricule' => $data['matricule']],
@@ -149,10 +172,96 @@ final class DemoHrDataSeeder extends Seeder
         }
 
         $this->seedAttendance($company, $employees, $site, $shift);
+        $this->seedAttendanceBreaks($company);
+        $this->seedOvertimeRegularizations($company);
         $this->seedLeaveData($company, $employees);
+        $this->seedLeaveBalanceAdjustments($company, $employees);
+        $this->seedCompensatoryOffs($company, $employees);
         $this->seedExpensesAndLoans($company, $employees);
         $this->seedTrainingAndRecruitment($company, $employees);
+        $this->seedDocumentsAndEquipment($company, $employees);
         $this->seedPayroll($employees);
+    }
+
+    /**
+     * @param  Collection<int, Employee>  $employees
+     */
+    private function demoSelfServiceEmployee(Collection $employees): Employee
+    {
+        $employee = $employees->firstWhere('email', 'employee@bravorh.com') ?? $employees->first();
+
+        if (! $employee instanceof Employee) {
+            throw new RuntimeException('Demo employee collection is empty.');
+        }
+
+        return $employee;
+    }
+
+    private function seedDesignationsAndHolidays(Company $company): void
+    {
+        foreach ([
+            ['code' => 'PRODUCT_MANAGER', 'name' => 'Responsable produit', 'department' => 'ENGINEERING'],
+            ['code' => 'HR_MANAGER', 'name' => 'Responsable RH', 'department' => 'HR'],
+            ['code' => 'OPS_COORDINATOR', 'name' => 'Coordinateur opérations', 'department' => 'OPERATIONS'],
+            ['code' => 'PHP_DEVELOPER', 'name' => 'Développeur PHP', 'department' => 'ENGINEERING'],
+        ] as $data) {
+            $departmentId = Department::query()
+                ->where('company_id', $company->id)
+                ->where('code', $data['department'])
+                ->value('id');
+
+            Designation::query()->updateOrCreate(
+                ['company_id' => $company->id, 'code' => $data['code']],
+                [
+                    'department_id' => $departmentId,
+                    'name' => $data['name'],
+                    'description' => 'Poste de démonstration.',
+                    'is_active' => true,
+                ],
+            );
+        }
+
+        $christmas = Carbon::create(now()->year, 12, 25);
+        if ($christmas->isPast()) {
+            $christmas->addYear();
+        }
+
+        foreach ([
+            [
+                'code' => 'DEMO_NATIONAL_HOLIDAY',
+                'name' => 'Jour férié national (démo)',
+                'date' => $christmas->toDateString(),
+                'type' => 'public',
+                'category' => 'national',
+                'recurring' => true,
+                'optional_holiday' => false,
+                'half_day' => false,
+            ],
+            [
+                'code' => 'DEMO_COMPANY_DAY',
+                'name' => 'Journée de démonstration',
+                'date' => now()->addDays(30)->toDateString(),
+                'type' => 'company',
+                'category' => 'corporate',
+                'recurring' => false,
+                'optional_holiday' => true,
+                'half_day' => true,
+            ],
+        ] as $data) {
+            Holiday::query()->updateOrCreate(
+                ['company_id' => $company->id, 'code' => $data['code']],
+                [
+                    ...$data,
+                    'description' => 'Événement fictif du jeu de données de démonstration.',
+                    'color' => $data['type'] === 'public' ? '#22c55e' : '#6366f1',
+                    'applicable_to' => 'all',
+                    'restricted_holiday' => false,
+                    'visible_to_employees' => true,
+                    'send_notification' => false,
+                    'is_active' => true,
+                ],
+            );
+        }
     }
 
     /**
@@ -160,10 +269,11 @@ final class DemoHrDataSeeder extends Seeder
      */
     private function seedAttendance(Company $company, Collection $employees, Site $site, Shift $shift): void
     {
-        $date = Carbon::today();
+        $date = Carbon::now()->subMonthNoOverflow()->endOfMonth()->startOfDay();
+        $periodStart = $date->copy()->startOfMonth();
         $workingDaysSeeded = 0;
 
-        while ($workingDaysSeeded < 10) {
+        while ($date->greaterThanOrEqualTo($periodStart)) {
             if ($date->isWeekday()) {
                 foreach ($employees as $index => $employee) {
                     $isLate = $workingDaysSeeded === 2 && $index === 0;
@@ -175,23 +285,14 @@ final class DemoHrDataSeeder extends Seeder
                         default => 0,
                     };
 
-                    AttendanceRecord::query()->updateOrCreate(
-                        [
-                            'company_id' => $company->id,
-                            'employee_id' => $employee->id,
-                            'attendance_date' => $date->copy(),
-                        ],
-                        [
-                            'shift_id' => $shift->id,
-                            'site_id' => $site->id,
-                            'check_in' => $isLate ? '09:18:00' : '08:55:00',
-                            'check_out' => Carbon::parse($shift->end_time)
-                                ->addMinutes($overtimeMinutes)
-                                ->format('H:i:s'),
-                            'late_minutes' => $isLate ? 18 : 0,
-                            'overtime_minutes' => $overtimeMinutes,
-                            'status' => $isLate ? 'late' : 'on_time',
-                        ],
+                    $this->upsertAttendanceRecord(
+                        $company,
+                        $employee,
+                        $shift,
+                        $site,
+                        $date,
+                        $isLate,
+                        $overtimeMinutes,
                     );
                 }
 
@@ -199,6 +300,178 @@ final class DemoHrDataSeeder extends Seeder
             }
 
             $date->subDay();
+        }
+
+        $date = Carbon::today();
+        $currentMonthStart = $date->copy()->startOfMonth();
+        $currentMonthWorkingDaysSeeded = 0;
+
+        while ($currentMonthWorkingDaysSeeded < 5 && $date->greaterThanOrEqualTo($currentMonthStart)) {
+            if ($date->isWeekday()) {
+                foreach ($employees as $index => $employee) {
+                    $isLate = $currentMonthWorkingDaysSeeded === 0 && $index === 0;
+                    $overtimeMinutes = match (true) {
+                        $currentMonthWorkingDaysSeeded === 1 && $index === 1 => 60,
+                        $currentMonthWorkingDaysSeeded === 3 && $index === 2 => 90,
+                        default => 0,
+                    };
+
+                    $this->upsertAttendanceRecord(
+                        $company,
+                        $employee,
+                        $shift,
+                        $site,
+                        $date,
+                        $isLate,
+                        $overtimeMinutes,
+                    );
+                }
+
+                $currentMonthWorkingDaysSeeded++;
+            }
+
+            $date->subDay();
+        }
+    }
+
+    private function upsertAttendanceRecord(
+        Company $company,
+        Employee $employee,
+        Shift $shift,
+        Site $site,
+        Carbon $date,
+        bool $isLate,
+        int $overtimeMinutes,
+    ): void {
+        $attendanceDate = $date->toDateString();
+        $record = AttendanceRecord::query()
+            ->where('company_id', $company->id)
+            ->where('employee_id', $employee->id)
+            ->whereDate('attendance_date', $attendanceDate)
+            ->first();
+
+        if ($record === null) {
+            $record = new AttendanceRecord([
+                'company_id' => $company->id,
+                'employee_id' => $employee->id,
+                'attendance_date' => $attendanceDate,
+            ]);
+        }
+
+        $record->fill([
+            'shift_id' => $shift->id,
+            'site_id' => $site->id,
+            'check_in' => $isLate ? '09:18:00' : '08:55:00',
+            'check_out' => Carbon::parse($shift->end_time)
+                ->addMinutes($overtimeMinutes)
+                ->format('H:i:s'),
+            'late_minutes' => $isLate ? 18 : 0,
+            'overtime_minutes' => $overtimeMinutes,
+            'status' => $isLate ? 'late' : 'on_time',
+        ])->save();
+    }
+
+    private function seedAttendanceBreaks(Company $company): void
+    {
+        $records = AttendanceRecord::query()
+            ->where('company_id', $company->id)
+            ->orderBy('attendance_date')
+            ->orderBy('employee_id')
+            ->take(2)
+            ->get();
+
+        foreach ($records as $index => $record) {
+            $startedAt = Carbon::parse($record->attendance_date->toDateString())->setTime(12, 0);
+            $duration = $index === 0 ? 30 : 45;
+
+            AttendanceBreak::query()->updateOrCreate(
+                ['attendance_record_id' => $record->id],
+                [
+                    'started_at' => $startedAt->toDateTimeString(),
+                    'ended_at' => $startedAt->copy()->addMinutes($duration)->toDateTimeString(),
+                    'duration_minutes' => $duration,
+                ],
+            );
+        }
+    }
+
+    private function seedOvertimeRegularizations(Company $company): void
+    {
+        $approvedAttendance = AttendanceRecord::query()
+            ->where('company_id', $company->id)
+            ->where('overtime_minutes', '>', 0)
+            ->orderByDesc('overtime_minutes')
+            ->firstOrFail();
+
+        Regularization::query()->updateOrCreate(
+            [
+                'company_id' => $company->id,
+                'employee_id' => $approvedAttendance->employee_id,
+                'attendance_date' => $approvedAttendance->attendance_date,
+                'type' => 'overtime',
+            ],
+            [
+                'status' => 'approved',
+                'check_in' => $approvedAttendance->check_in,
+                'check_out' => $approvedAttendance->check_out,
+                'reason' => 'Données démo : heures supplémentaires effectuées et approuvées.',
+                'attachment_count' => 0,
+                'manager_name' => 'Amina El Idrissi',
+                'reviewed_at' => now()->subDays(2),
+            ],
+        );
+
+        $attendanceWithoutOvertime = AttendanceRecord::query()
+            ->where('company_id', $company->id)
+            ->where('overtime_minutes', 0)
+            ->orderByDesc('attendance_date')
+            ->get()
+            ->unique('employee_id')
+            ->take(2)
+            ->values();
+
+        foreach ([
+            [
+                'status' => 'pending',
+                'reason' => 'Données démo : demande d’une heure supplémentaire en attente.',
+                'requested_minutes' => 60,
+                'manager_name' => null,
+                'reviewed_at' => null,
+            ],
+            [
+                'status' => 'rejected',
+                'reason' => 'Données démo : demande d’heures supplémentaires refusée.',
+                'requested_minutes' => 90,
+                'manager_name' => 'Amina El Idrissi',
+                'reviewed_at' => now()->subDay(),
+            ],
+        ] as $index => $data) {
+            $attendance = $attendanceWithoutOvertime->get($index);
+            if ($attendance === null) {
+                continue;
+            }
+
+            $requestedCheckOut = Carbon::parse($attendance->check_out)
+                ->addMinutes($data['requested_minutes'])
+                ->format('H:i:s');
+
+            Regularization::query()->updateOrCreate(
+                [
+                    'company_id' => $company->id,
+                    'employee_id' => $attendance->employee_id,
+                    'attendance_date' => $attendance->attendance_date,
+                    'type' => 'overtime',
+                ],
+                [
+                    'status' => $data['status'],
+                    'check_in' => $attendance->check_in,
+                    'check_out' => $requestedCheckOut,
+                    'reason' => $data['reason'],
+                    'attachment_count' => 0,
+                    'manager_name' => $data['manager_name'],
+                    'reviewed_at' => $data['reviewed_at'],
+                ],
+            );
         }
     }
 
@@ -256,7 +529,7 @@ final class DemoHrDataSeeder extends Seeder
             }
         }
 
-        $employee = $employees->first();
+        $employee = $this->demoSelfServiceEmployee($employees);
         $pastStart = now()->subMonths(2)->startOfMonth()->toDateString();
         $pastEnd = now()->subMonths(2)->startOfMonth()->addDay()->toDateString();
         LeaveRequest::query()->updateOrCreate(
@@ -294,6 +567,143 @@ final class DemoHrDataSeeder extends Seeder
                 'reviewed_at' => null,
             ],
         );
+
+        $rejectedEmployee = $employees->get(1, $employee);
+        LeaveRequest::query()->updateOrCreate(
+            [
+                'company_id' => $company->id,
+                'employee_id' => $rejectedEmployee->id,
+                'reason' => 'Données démo : congé refusé',
+            ],
+            [
+                'leave_type' => 'casual_leave',
+                'duration_kind' => 'full',
+                'start_date' => now()->addDays(20)->toDateString(),
+                'end_date' => now()->addDays(20)->toDateString(),
+                'total_days' => 1,
+                'status' => 'rejected',
+                'manager_name' => 'Amina El Idrissi',
+                'reviewed_at' => now()->subDay(),
+            ],
+        );
+    }
+
+    /**
+     * @param  Collection<int, Employee>  $employees
+     */
+    private function seedLeaveBalanceAdjustments(Company $company, Collection $employees): void
+    {
+        $employee = $this->demoSelfServiceEmployee($employees);
+        $leaveType = LeaveType::query()
+            ->where('company_id', $company->id)
+            ->where('code', 'casual_leave')
+            ->firstOrFail();
+        $balance = LeaveBalance::query()
+            ->where('company_id', $company->id)
+            ->where('employee_id', $employee->id)
+            ->where('leave_type_id', $leaveType->id)
+            ->where('year', now()->year)
+            ->firstOrFail();
+        $balanceBefore = (float) $balance->entitled + (float) $balance->carried_forward;
+        $balance->additional = 1;
+        $balance->save();
+
+        LeaveBalanceAdjustment::query()->updateOrCreate(
+            [
+                'leave_balance_id' => $balance->id,
+                'reason' => 'Données démo : ajustement manuel de congé',
+            ],
+            [
+                'company_id' => $company->id,
+                'employee_id' => $employee->id,
+                'leave_type_id' => $leaveType->id,
+                'adjusted_by' => null,
+                'year' => now()->year,
+                'type' => 'manual_adjustment',
+                'days' => 1,
+                'balance_before' => $balanceBefore,
+                'balance_after' => $balanceBefore + 1,
+            ],
+        );
+    }
+
+    /**
+     * @param  Collection<int, Employee>  $employees
+     */
+    private function seedCompensatoryOffs(Company $company, Collection $employees): void
+    {
+        $rows = [
+            [
+                'employee' => $employees->get(0),
+                'worked_days_ago' => 8,
+                'status' => 'pending',
+                'usage_status' => null,
+                'manager_name' => null,
+                'reject_reason' => null,
+                'reason' => 'Données démo : heures supplémentaires à compenser.',
+            ],
+            [
+                'employee' => $employees->get(1),
+                'worked_days_ago' => 15,
+                'status' => 'approved',
+                'usage_status' => 'available',
+                'manager_name' => 'Amina El Idrissi',
+                'reject_reason' => null,
+                'reason' => 'Données démo : repos compensatoire approuvé et disponible.',
+            ],
+            [
+                'employee' => $employees->get(2),
+                'worked_days_ago' => 22,
+                'status' => 'approved',
+                'usage_status' => 'used',
+                'manager_name' => 'Amina El Idrissi',
+                'reject_reason' => null,
+                'reason' => 'Données démo : repos compensatoire déjà utilisé.',
+            ],
+            [
+                'employee' => $employees->get(3),
+                'worked_days_ago' => 29,
+                'status' => 'rejected',
+                'usage_status' => null,
+                'manager_name' => 'Amina El Idrissi',
+                'reject_reason' => 'Données démo : justificatif insuffisant.',
+                'reason' => 'Données démo : demande de repos compensatoire refusée.',
+            ],
+        ];
+
+        foreach ($rows as $data) {
+            $employee = $data['employee'];
+            if ($employee === null) {
+                continue;
+            }
+
+            $workedDate = now()->subDays($data['worked_days_ago'])->toDateString();
+            $compensatoryOff = CompensatoryOff::query()
+                ->where('company_id', $company->id)
+                ->where('employee_id', $employee->id)
+                ->whereDate('worked_date', $workedDate)
+                ->first();
+
+            if ($compensatoryOff === null) {
+                $compensatoryOff = new CompensatoryOff([
+                    'company_id' => $company->id,
+                    'employee_id' => $employee->id,
+                    'worked_date' => $workedDate,
+                ]);
+            }
+
+            $compensatoryOff->fill([
+                'hours_worked' => 3,
+                'comp_off_days' => 0.5,
+                'expiry_date' => now()->addMonths(3)->toDateString(),
+                'status' => $data['status'],
+                'usage_status' => $data['usage_status'],
+                'reason' => $data['reason'],
+                'manager_name' => $data['manager_name'],
+                'reject_reason' => $data['reject_reason'],
+                'reviewed_at' => $data['status'] === 'pending' ? null : now()->subDays(2),
+            ])->save();
+        }
     }
 
     /**
@@ -301,7 +711,7 @@ final class DemoHrDataSeeder extends Seeder
      */
     private function seedExpensesAndLoans(Company $company, Collection $employees): void
     {
-        $employee = $employees->first();
+        $employee = $this->demoSelfServiceEmployee($employees);
 
         Expense::query()->updateOrCreate(
             [
@@ -414,6 +824,83 @@ final class DemoHrDataSeeder extends Seeder
                 'stage' => 'interview',
                 'last_action' => 'Entretien technique planifié',
                 'applied_date' => now()->subDays(12)->toDateString(),
+            ],
+        );
+    }
+
+    /**
+     * @param  Collection<int, Employee>  $employees
+     */
+    private function seedDocumentsAndEquipment(Company $company, Collection $employees): void
+    {
+        $employee = $this->demoSelfServiceEmployee($employees);
+
+        EmployeeDocument::query()->updateOrCreate(
+            [
+                'company_id' => $company->id,
+                'employee_id' => $employee->id,
+                'reference' => 'DEMO-ID-'.$employee->matricule,
+            ],
+            [
+                'name' => 'Pièce d’identité — document démo',
+                'category' => 'national_id',
+                'issue_date' => now()->subYears(2)->toDateString(),
+                'expiry_date' => now()->addYears(3)->toDateString(),
+                'status' => 'verified',
+                'manager_name' => 'Amina El Idrissi',
+                'reviewed_at' => now()->subDays(5),
+            ],
+        );
+
+        DocumentRequest::query()->updateOrCreate(
+            [
+                'company_id' => $company->id,
+                'employee_id' => $employee->id,
+                'type' => 'salary_letter',
+                'purpose' => 'Données démo : demande d’attestation de salaire',
+            ],
+            [
+                'needed_by' => now()->addDays(7)->toDateString(),
+                'status' => 'pending',
+            ],
+        );
+
+        $equipment = Equipment::query()->updateOrCreate(
+            ['company_id' => $company->id, 'name' => 'Ordinateur portable de démonstration'],
+            [
+                'category' => 'laptop',
+                'description' => 'Matériel fictif pour tester les demandes et attributions.',
+                'stock' => 4,
+                'brand' => 'Lenovo',
+                'model' => 'ThinkPad E14',
+                'specifications' => ['memory' => '16 Go', 'storage' => '512 Go SSD'],
+                'is_active' => true,
+            ],
+        );
+
+        EquipmentRequest::query()->updateOrCreate(
+            [
+                'company_id' => $company->id,
+                'employee_id' => $employee->id,
+                'equipment_id' => $equipment->id,
+                'reason' => 'Données démo : demande de matériel',
+            ],
+            [
+                'quantity' => 1,
+                'priority' => 'medium',
+                'status' => 'pending',
+                'expected_date' => now()->addDays(10)->toDateString(),
+            ],
+        );
+
+        EquipmentAssignment::query()->updateOrCreate(
+            ['company_id' => $company->id, 'serial_number' => 'DEMO-LAPTOP-001'],
+            [
+                'equipment_id' => $equipment->id,
+                'employee_id' => $employee->id,
+                'equipment_request_id' => null,
+                'status' => 'assigned',
+                'assigned_date' => now()->subMonths(2)->toDateString(),
             ],
         );
     }

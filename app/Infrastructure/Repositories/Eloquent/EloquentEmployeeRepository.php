@@ -46,6 +46,11 @@ final class EloquentEmployeeRepository implements EmployeeRepositoryInterface
 
         return Employee::query()
             ->where('company_id', $companyId)
+            ->with([
+                'company:id,country_id,currency',
+                'company.country:id,currency',
+                'country:id,currency',
+            ])
             ->when($employeeIds !== [], fn ($q) => $q->whereIn('id', $employeeIds))
             ->tap(fn ($q) => $this->excludeTenantProfiles($q, $companyId))
             ->when($search !== '', function ($q) use ($search) {
@@ -201,4 +206,3 @@ final class EloquentEmployeeRepository implements EmployeeRepositoryInterface
         return (bool) $employee->delete();
     }
 }
-

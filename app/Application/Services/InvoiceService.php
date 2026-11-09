@@ -114,7 +114,9 @@ final class InvoiceService
     public function recordPayment(Invoice $invoice, array $data): array
     {
         return DB::transaction(function () use ($invoice, $data) {
-            $invoice = $this->invoiceRepository->find($invoice->id) ?? $invoice;
+            $invoice = Invoice::query()
+                ->lockForUpdate()
+                ->findOrFail($invoice->id);
             $previousStatus = $invoice->status;
 
             if (in_array($invoice->status, [Invoice::STATUS_DRAFT, Invoice::STATUS_CANCELLED, Invoice::STATUS_PAID], true)) {

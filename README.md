@@ -65,20 +65,27 @@ cp .env.example .env
 php artisan key:generate
 
 # La DB par défaut est SQLite (database/database.sqlite). Pour MySQL,
-# configurez DB_* dans .env puis :
+# configurez DB_* dans .env puis réinitialisez les données de démonstration :
 
-php artisan migrate:fresh --seed
+php artisan demo:reset
 php artisan serve
 ```
 
-Le seeder crée :
-- 4 pays (Maroc, RDC, France, Côte d'Ivoire)
-- Les taxes Maroc : **CNSS** (4.48% / 8.60% plafond 6 000), **AMO** (2.26% / 1.85%),
-  **IR** (barème mensualisé 6 tranches)
-- Les taxes RDC : **CNSS RDC**, **INPP**, **ONEM**, **IPR** (barème progressif 4 tranches)
-- Une entreprise démo `Acme Maroc SARL` avec un employé `EMP-0001` (Yassine Benali)
-  et une structure salariale complète (12 000 MAD + primes + avance)
-- Un modificateur "Bonus Ramadan" appliqué sur le NET en avril 2026 uniquement
+`demo:reset` supprime toutes les tables et recrée la base avec les migrations et
+les seeders de démonstration enregistrés dans `DatabaseSeeder`. La commande est
+limitée aux environnements `local` et `testing` et demande confirmation.
+Pour l'exécuter sans invite dans ces environnements : `php artisan demo:reset --force`.
+
+Les seeders fournissent notamment :
+- Les pays et barèmes fiscaux configurés, dont le Maroc et la RDC.
+- L'entreprise démo `Acme Maroc SARL`, plusieurs employés et des structures salariales.
+- Des présences sur le mois en cours et le précédent, pauses, heures supplémentaires et régularisations.
+- Des congés avec plusieurs statuts, soldes et ajustements, jours fériés et repos compensatoires.
+- Des employés, départements, postes, équipes, sites et horaires de démonstration.
+- Des notes de frais et prêts, ainsi que des bulletins et structures de paie.
+- Des documents et demandes de documents, du matériel avec demandes et attributions.
+- Des formations et inscriptions, des offres et candidatures de démonstration.
+- Des abonnements, factures et données de paie de test multi-pays.
 
 ---
 
@@ -247,7 +254,24 @@ Restriction temporelle via `period_from` / `period_to` (`YYYY-MM`).
 
 ---
 
-## 7. Audit
+## 7. Cycle recrutement et intégration
+
+Un candidat à l’étape `offer` peut être embauché avec
+`POST /api/v1/candidates/{candidate}/hire`. Cette opération crée le dossier
+employé et une checklist d’intégration générique dans la même transaction ;
+elle ne crée pas automatiquement de compte utilisateur ni de règles légales
+propres à un pays.
+
+La checklist est consultable avec `GET /api/v1/employees/{employee}/onboarding`
+et chaque étape se met à jour avec
+`PATCH /api/v1/employees/{employee}/onboarding/{task}` (`pending` ou
+`completed`). Le statut employé passe à `active` lorsque toutes les étapes sont
+terminées. Les actions d’embauche et d’intégration sont réservées aux comptes
+autorisés à gérer les employés.
+
+---
+
+## 8. Audit
 
 Chaque opération métier (création/édition d'employé, génération de paie,
 modification d'une taxe…) est tracée dans la table `audit_logs` via
@@ -256,7 +280,7 @@ le détail variable par variable au moment du calcul.
 
 ---
 
-## 8. Tests rapides
+## 9. Tests rapides
 
 ```bash
 # Lister les routes
@@ -274,7 +298,7 @@ php artisan tinker
 
 ---
 
-## 9. Pour aller plus loin
+## 10. Pour aller plus loin
 
 - Authentification : Sanctum est pré-installé (`/api/user`). Ajoutez le middleware
   `auth:sanctum` sur les groupes de routes en production.

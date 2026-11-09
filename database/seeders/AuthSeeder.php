@@ -28,7 +28,7 @@ class AuthSeeder extends Seeder
                 'email' => 'admin@bravorh.com',
                 'name' => 'Robert Anderson',
                 'role' => 'admin',
-                'company_id' => $bravo?->id,
+                'company_id' => $acme?->id,
             ],
             [
                 'email' => 'tenant@bravorh.com',

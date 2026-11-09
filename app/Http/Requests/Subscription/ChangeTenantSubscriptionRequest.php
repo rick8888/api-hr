@@ -44,7 +44,6 @@ class ChangeTenantSubscriptionRequest extends FormRequest
             ],
             'reference' => ['nullable', 'string', 'max:120'],
             'receipt' => [
-                'exclude_unless:payment_method,'.PaymentMethod::CODE_BANK_TRANSFER,
                 'required',
                 'file',
                 'mimes:pdf,jpg,jpeg,png,webp',

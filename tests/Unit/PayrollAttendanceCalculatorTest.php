@@ -31,6 +31,8 @@ final class PayrollAttendanceCalculatorTest extends TestCase
             $table->id();
             $table->unsignedBigInteger('employee_id');
             $table->date('attendance_date');
+            $table->unsignedInteger('late_minutes')->default(0);
+            $table->unsignedInteger('early_out_minutes')->default(0);
             $table->unsignedInteger('overtime_minutes')->default(0);
             $table->string('status');
             $table->softDeletes();
@@ -90,6 +92,45 @@ final class PayrollAttendanceCalculatorTest extends TestCase
         $this->assertSame(22.0, $summary['working_days']);
         $this->assertSame(22.0, $summary['payable_days']);
         $this->assertSame(2200.0, $summary['payable_salary']);
+    }
+
+    public function test_summary_includes_late_early_overtime_day_and_holiday_counts(): void
+    {
+        Carbon::setTestNow('2026-01-31');
+        $company = new Company;
+        $company->id = 1;
+        $company->settings = [];
+
+        $employee = new Employee;
+        $employee->id = 1;
+        $employee->setRelation('company', $company);
+
+        DB::table('attendance_records')->insert([
+            'employee_id' => $employee->id,
+            'attendance_date' => '2026-01-05',
+            'status' => 'late',
+            'late_minutes' => 12,
+            'early_out_minutes' => 8,
+            'overtime_minutes' => 60,
+        ]);
+        DB::table('holidays')->insert([
+            'company_id' => $company->id,
+            'date' => '2026-01-06',
+            'recurring' => false,
+            'is_active' => true,
+        ]);
+
+        $summary = app(PayrollAttendanceCalculator::class)->summarize(
+            $employee,
+            '2026-01-05',
+            '2026-01-06',
+            200.0,
+        );
+
+        $this->assertSame(1.0, $summary['late_days']);
+        $this->assertSame(1.0, $summary['early_checkout_days']);
+        $this->assertSame(1.0, $summary['overtime_days']);
+        $this->assertSame(1.0, $summary['holidays']);
     }
 
     public function test_preview_treats_unrecorded_workdays_as_pending_and_payable(): void

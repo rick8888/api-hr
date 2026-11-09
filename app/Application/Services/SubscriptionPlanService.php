@@ -71,6 +71,7 @@ final class SubscriptionPlanService
             'tagline' => $plan->tagline,
             'price_monthly' => $plan->price_monthly,
             'currency' => $plan->currency,
+            'currency_prices' => $plan->currency_prices ?? [],
             'max_users' => $plan->max_users,
             'max_employees' => $plan->max_employees,
             'storage_gb' => $plan->storage_gb,

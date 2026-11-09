@@ -13,7 +13,7 @@ final class EloquentCandidateRepository implements CandidateRepositoryInterface
     public function listByCompany(int $companyId, array $filters = []): Collection
     {
         $query = Candidate::query()
-            ->with(['jobOpening.designation.department'])
+            ->with(['jobOpening.designation.department', 'hiredEmployee'])
             ->where('company_id', $companyId);
 
         if (! empty($filters['stage'])) {
@@ -35,7 +35,7 @@ final class EloquentCandidateRepository implements CandidateRepositoryInterface
     public function findForCompany(int $id, int $companyId): ?Candidate
     {
         return Candidate::query()
-            ->with(['jobOpening.designation.department'])
+            ->with(['jobOpening.designation.department', 'hiredEmployee'])
             ->where('company_id', $companyId)
             ->find($id);
     }

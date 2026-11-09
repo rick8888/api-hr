@@ -20,6 +20,7 @@ class SubscriptionPlanResource extends JsonResource
             'tagline' => $this->tagline,
             'price_monthly' => (float) $this->price_monthly,
             'currency' => $this->currency,
+            'currency_prices' => $this->currency_prices ?? [],
             'max_users' => $this->max_users,
             'max_employees' => $this->max_employees,
             'storage_gb' => $this->storage_gb,

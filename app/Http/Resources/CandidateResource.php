@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace App\Http\Resources;
 
 use App\Application\DTO\Recruitment\CandidateData;
+use App\Domain\Recruitment\Models\Candidate;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Domain\Recruitment\Models\Candidate */
+/** @mixin Candidate */
 class CandidateResource extends JsonResource
 {
     /** @return array<string, mixed> */
@@ -20,6 +21,7 @@ class CandidateResource extends JsonResource
             'id' => $this->id,
             'company_id' => $this->company_id,
             'job_opening_id' => $this->job_opening_id,
+            'hired_employee_id' => $this->hired_employee_id,
             'name' => $this->name,
             'email' => $this->email,
             'phone' => $this->phone,
@@ -33,6 +35,12 @@ class CandidateResource extends JsonResource
             'stage' => $stageLabel,
             'status' => $stageLabel,
             'stage_key' => $this->stage,
+            'hired_employee' => $this->whenLoaded('hiredEmployee', fn () => $this->hiredEmployee ? [
+                'id' => $this->hiredEmployee->id,
+                'name' => $this->hiredEmployee->full_name,
+                'matricule' => $this->hiredEmployee->matricule,
+                'status' => $this->hiredEmployee->metadata['employment_status'] ?? null,
+            ] : null),
             'last_action' => $this->last_action,
             'lastAction' => $this->last_action,
             'applied_date' => optional($this->applied_date)->toDateString(),

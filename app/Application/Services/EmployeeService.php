@@ -13,10 +13,14 @@ use Carbon\Carbon;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
+use Throwable;
 
 final class EmployeeService
 {
@@ -205,6 +209,45 @@ final class EmployeeService
 
             return $updated;
         });
+    }
+
+    public function updateAvatarForActor(
+        User $actor,
+        Employee $employee,
+        UploadedFile $avatar,
+    ): Employee {
+        $companyId = $this->resolveCompanyId($actor);
+        $this->ensureBelongsToCompany($employee, $companyId);
+        Gate::forUser($actor)->authorize('update', $employee);
+
+        if (! $actor->hasPermission('employees.manage')) {
+            throw new AuthorizationException('Seuls les administrateurs peuvent modifier la photo.');
+        }
+
+        $path = $avatar->store("employees/{$companyId}/{$employee->id}/avatar", 'public');
+        if (! is_string($path) || $path === '') {
+            throw new RuntimeException('Impossible d’enregistrer la photo de l’employé.');
+        }
+
+        $previousPath = $employee->avatar_path;
+        $employee->avatar_path = $path;
+
+        try {
+            $employee->saveOrFail();
+        } catch (Throwable $exception) {
+            Storage::disk('public')->delete($path);
+            throw $exception;
+        }
+
+        if ($previousPath && $previousPath !== $path) {
+            Storage::disk('public')->delete($previousPath);
+        }
+
+        $this->audit->log('employee.avatar_updated', $employee, [
+            'employee_id' => $employee->id,
+        ]);
+
+        return $employee->fresh();
     }
 
     public function toggleStatusForActor(User $actor, Employee $employee): Employee

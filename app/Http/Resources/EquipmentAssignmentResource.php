@@ -25,6 +25,7 @@ class EquipmentAssignmentResource extends JsonResource
             'employee_name' => $employee
                 ? trim(($employee->first_name ?? '').' '.($employee->last_name ?? ''))
                 : null,
+            'employee_avatar_url' => EmployeeAvatarUrl::for($employee, $request),
             'name' => $equipment?->name,
             'category' => $equipment?->category,
             'brand' => $equipment?->brand,

@@ -6,6 +6,7 @@ namespace App\Application\Services;
 
 use App\Application\DTO\Company\CompanyData;
 use App\Domain\Company\Models\Company;
+use App\Domain\Company\Models\Country;
 use App\Domain\Company\Repositories\CompanyRepositoryInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -31,7 +32,12 @@ final class CompanyService
     public function create(CompanyData $data): Company
     {
         $company = DB::transaction(function () use ($data): Company {
-            $company = $this->repository->create($data->toModelArray());
+            $payload = $data->toModelArray();
+            $country = Country::query()->findOrFail($data->countryId);
+            $payload['currency'] = strtoupper((string) (
+                $data->currency ?: $country->currency ?: config('currency.default', 'USD')
+            ));
+            $company = $this->repository->create($payload);
             $company->refresh();
             $this->tenantContactUser->syncForCompany($company, $data->contactPassword);
             $this->audit->log('company.created', $company, ['code' => $company->code]);
@@ -45,8 +51,19 @@ final class CompanyService
     public function update(Company $company, CompanyData $data): Company
     {
         $updated = DB::transaction(function () use ($company, $data): Company {
-            $updated = $this->repository->update($company, $data->toModelArray());
+            $payload = $data->toModelArray();
+            if ($data->currency === null || trim($data->currency) === '') {
+                $payload['currency'] = $data->countryId !== $company->country_id || ! $company->currency
+                    ? (Country::query()->findOrFail($data->countryId)->currency ?: config('currency.default', 'USD'))
+                    : $company->currency;
+            } else {
+                $payload['currency'] = strtoupper($data->currency);
+            }
+            $updated = $this->repository->update($company, $payload);
             $updated->refresh();
+            if (! $updated->is_active) {
+                $this->revokeCompanyTokens($updated);
+            }
             $this->tenantContactUser->syncForCompany($updated, $data->contactPassword);
             $this->audit->log('company.updated', $updated, ['code' => $updated->code]);
 
@@ -58,13 +75,18 @@ final class CompanyService
 
     public function toggleStatus(Company $company, bool $isActive): Company
     {
-        $updated = $this->repository->update($company, ['is_active' => $isActive]);
-        $this->audit->log('company.status_changed', $updated, [
-            'code' => $updated->code,
-            'is_active' => $isActive,
-        ]);
+        return DB::transaction(function () use ($company, $isActive): Company {
+            $updated = $this->repository->update($company, ['is_active' => $isActive]);
+            if (! $isActive) {
+                $this->revokeCompanyTokens($updated);
+            }
+            $this->audit->log('company.status_changed', $updated, [
+                'code' => $updated->code,
+                'is_active' => $isActive,
+            ]);
 
-        return $updated;
+            return $updated;
+        });
     }
 
     public function delete(Company $company): bool
@@ -72,5 +94,14 @@ final class CompanyService
         $this->audit->log('company.deleted', $company, ['code' => $company->code]);
 
         return $this->repository->delete($company);
+    }
+
+    private function revokeCompanyTokens(Company $company): void
+    {
+        $company->users()
+            ->where(fn ($query) => $query->where('role', '<>', 'tenant')->orWhereNull('role'))
+            ->each(
+                static fn ($user) => $user->tokens()->delete()
+            );
     }
 }

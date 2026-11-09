@@ -22,6 +22,7 @@ class RegularizationResource extends JsonResource
             'employee_name' => $employee
                 ? trim(($employee->first_name ?? '').' '.($employee->last_name ?? ''))
                 : null,
+            'employee_avatar_url' => EmployeeAvatarUrl::for($employee, $request),
             'department' => $employee?->department,
             'attendance_date' => optional($this->attendance_date)->toDateString(),
             'request_date' => optional($this->created_at)->toDateString(),

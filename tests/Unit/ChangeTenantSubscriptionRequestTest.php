@@ -11,7 +11,7 @@ use Tests\TestCase;
 
 final class ChangeTenantSubscriptionRequestTest extends TestCase
 {
-    public function test_mobile_money_is_accepted_when_operator_and_phone_are_provided(): void
+    public function test_mobile_money_is_accepted_with_operator_phone_and_payment_proof(): void
     {
         $request = new ChangeTenantSubscriptionRequest;
         $validator = Validator::make([
@@ -19,6 +19,7 @@ final class ChangeTenantSubscriptionRequestTest extends TestCase
             'payment_method' => 'mobile_money',
             'mobile_operator' => 'orange_money',
             'phone_number' => '+243000000000',
+            'receipt' => UploadedFile::fake()->image('mobile-money-proof.jpg'),
         ], $request->rules());
 
         $this->assertFalse($validator->fails());
@@ -29,6 +30,7 @@ final class ChangeTenantSubscriptionRequestTest extends TestCase
         $validator = Validator::make([
             'plan_code' => 'premium',
             'payment_method' => 'mobile_money',
+            'receipt' => UploadedFile::fake()->image('mobile-money-proof.jpg'),
         ], (new ChangeTenantSubscriptionRequest)->rules());
 
         $this->assertTrue($validator->fails());
@@ -36,31 +38,24 @@ final class ChangeTenantSubscriptionRequestTest extends TestCase
         $this->assertArrayHasKey('phone_number', $validator->errors()->toArray());
     }
 
-    public function test_supported_subscription_payment_methods_remain_accepted(): void
+    public function test_all_supported_subscription_payment_methods_require_proof(): void
     {
         $cashValidator = Validator::make([
             'plan_code' => 'premium',
             'payment_method' => 'cash',
             'reference' => 'Cash receipt 123',
+            'receipt' => UploadedFile::fake()->image('cash-proof.jpg'),
         ], (new ChangeTenantSubscriptionRequest)->rules());
         $this->assertFalse($cashValidator->fails());
 
-        $transferValidator = Validator::make([
-            'plan_code' => 'premium',
-            'payment_method' => 'bank_transfer',
-            'receipt' => UploadedFile::fake()->image('transfer-proof.jpg'),
-        ], (new ChangeTenantSubscriptionRequest)->rules());
-        $this->assertFalse($transferValidator->fails());
-    }
+        foreach (['bank_transfer', 'cash', 'mobile_money'] as $method) {
+            $validator = Validator::make([
+                'plan_code' => 'premium',
+                'payment_method' => $method,
+            ], (new ChangeTenantSubscriptionRequest)->rules());
 
-    public function test_bank_transfer_requires_a_valid_proof_file(): void
-    {
-        $validator = Validator::make([
-            'plan_code' => 'premium',
-            'payment_method' => 'bank_transfer',
-        ], (new ChangeTenantSubscriptionRequest)->rules());
-
-        $this->assertTrue($validator->fails());
-        $this->assertArrayHasKey('receipt', $validator->errors()->toArray());
+            $this->assertTrue($validator->fails(), "Expected {$method} to require a proof file.");
+            $this->assertArrayHasKey('receipt', $validator->errors()->toArray());
+        }
     }
 }
