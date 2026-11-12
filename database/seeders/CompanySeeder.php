@@ -15,6 +15,8 @@ class CompanySeeder extends Seeder
 
     public function run(): void
     {
+        DemoEnvironmentGuard::ensureAllowed(self::class);
+
         $france = Country::query()->where('code', 'FR')->first();
         $morocco = Country::query()->where('code', 'MA')->first();
         $civ = Country::query()->where('code', 'CIV')->first();

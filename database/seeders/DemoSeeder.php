@@ -24,6 +24,8 @@ class DemoSeeder extends Seeder
 
     public function run(): void
     {
+        DemoEnvironmentGuard::ensureAllowed(self::class);
+
         $morocco = Country::query()->where('code', 'MA')->firstOrFail();
 
         $company = Company::query()->updateOrCreate(

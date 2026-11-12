@@ -30,10 +30,16 @@ final class AdminDashboardService
     ) {}
 
     /** @return array<string, mixed> */
-    public function showForActor(User $actor, string $period = 'today'): array
+    public function showForActor(User $actor, string $period = 'today', ?string $scheduleDate = null): array
     {
         $companyId = $this->companyId($actor);
         $today = Carbon::today();
+        $scheduleMonth = $scheduleDate !== null
+            ? Carbon::createFromFormat('!Y-m-d', $scheduleDate)
+            : $today;
+        if (! $scheduleMonth instanceof Carbon) {
+            $scheduleMonth = $today;
+        }
         $period = in_array($period, ['today', 'week', 'month'], true) ? $period : 'today';
 
         $employees = Employee::query()
@@ -157,8 +163,8 @@ final class AdminDashboardService
                 ->map(fn (AttendanceRecord $record) => $this->mapAttendanceRow($record, $employeeMap))
                 ->values()
                 ->all(),
-            'schedule' => $this->buildSchedule($companyId, $today, $teamEmployeeIds),
-            'schedule_dates' => $this->scheduleHighlightDates($companyId, $today, $teamEmployeeIds),
+            'schedule' => $this->buildSchedule($companyId, $scheduleMonth, $teamEmployeeIds),
+            'schedule_dates' => $this->scheduleHighlightDates($companyId, $scheduleMonth, $teamEmployeeIds),
             'hr_actions' => $actor->hasPermission('employees.manage')
                 ? $this->buildHrActions($companyId, $employees, $today)
                 : null,
@@ -429,7 +435,7 @@ final class AdminDashboardService
     private function buildSchedule(int $companyId, Carbon $today, ?array $teamEmployeeIds): array
     {
         $from = $today->copy()->startOfMonth();
-        $to = $today->copy()->addDays(14)->endOfDay();
+        $to = $today->copy()->endOfMonth();
 
         $holidays = Holiday::query()
             ->where('company_id', $companyId)
@@ -446,10 +452,9 @@ final class AdminDashboardService
                 $q->whereIn('employee_id', $teamEmployeeIds !== [] ? $teamEmployeeIds : [-1]);
             })
             ->where('status', 'pending')
-            ->whereDate('start_date', '>=', $today)
+            ->whereDate('start_date', '>=', $from)
             ->whereDate('start_date', '<=', $to)
             ->orderBy('start_date')
-            ->limit(20)
             ->get();
 
         /** @var array<string, list<array{time: string, title: string, description: string}>> $byDate */
@@ -501,7 +506,7 @@ final class AdminDashboardService
     private function scheduleHighlightDates(int $companyId, Carbon $today, ?array $teamEmployeeIds): array
     {
         $from = $today->copy()->startOfMonth();
-        $to = $today->copy()->endOfMonth()->addMonth();
+        $to = $today->copy()->endOfMonth();
 
         $holidayDates = Holiday::query()
             ->where('company_id', $companyId)

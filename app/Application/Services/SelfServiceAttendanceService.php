@@ -58,6 +58,7 @@ final class SelfServiceAttendanceService
         }
 
         return [
+            'server_now' => Carbon::now()->toIso8601String(),
             'summary' => [
                 'present_days' => $monthRecords->sum(
                     fn (AttendanceRecord $r) => in_array($r->status, ['on_time', 'late'], true)

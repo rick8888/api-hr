@@ -8,14 +8,19 @@ use App\Domain\Attendance\Models\AttendanceBreak;
 use App\Domain\Attendance\Models\AttendanceRecord;
 use App\Domain\Company\Models\Company;
 use App\Domain\Employee\Models\Employee;
+use App\Domain\Employee\Models\EmployeeOnboardingTask;
+use App\Domain\Employee\Models\PerformanceReview;
+use App\Domain\Employee\Models\SelfServiceNote;
 use App\Domain\Leave\Models\CompensatoryOff;
 use App\Domain\Organization\Models\Designation;
 use App\Domain\Organization\Models\Holiday;
 use App\Domain\Payroll\Models\Payroll;
+use App\Domain\Recruitment\Models\Candidate;
 use App\Models\User;
 use Carbon\CarbonPeriod;
 use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\DemoHrDataSeeder;
+use Database\Seeders\DemoWorkflowDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -42,13 +47,13 @@ class DemoHrDataSeederTest extends TestCase
         ))->filter(static fn ($date) => $date->isWeekday())->count();
         $currentMonthSeededDays = min(5, $currentMonthElapsedWorkingDays);
 
-        $this->assertSame(5, Employee::query()->where('company_id', $company->id)->count());
+        $this->assertSame(7, Employee::query()->where('company_id', $company->id)->count());
         $this->assertSame(
-            5 * ($previousMonthWorkingDays + $currentMonthSeededDays),
+            6 * ($previousMonthWorkingDays + $currentMonthSeededDays),
             AttendanceRecord::query()->where('company_id', $company->id)->count(),
         );
         $this->assertSame(
-            5 * $previousMonthWorkingDays,
+            6 * $previousMonthWorkingDays,
             AttendanceRecord::query()
                 ->where('company_id', $company->id)
                 ->whereDate('attendance_date', '>=', $previousMonthStart->toDateString())
@@ -56,7 +61,7 @@ class DemoHrDataSeederTest extends TestCase
                 ->count(),
         );
         $this->assertSame(
-            5 * $currentMonthSeededDays,
+            6 * $currentMonthSeededDays,
             AttendanceRecord::query()
                 ->where('company_id', $company->id)
                 ->whereDate('attendance_date', '>=', now()->startOfMonth()->toDateString())
@@ -69,7 +74,28 @@ class DemoHrDataSeederTest extends TestCase
         $this->assertSame(4, Designation::query()->where('company_id', $company->id)->count());
         $this->assertSame(2, Holiday::query()->where('company_id', $company->id)->count());
         $this->assertSame(4, CompensatoryOff::query()->where('company_id', $company->id)->count());
-        $this->assertSame(5, Payroll::query()->where('company_id', $company->id)->count());
+        $this->assertSame(6, Payroll::query()->where('company_id', $company->id)->count());
+        $onboardingEmployee = Employee::query()->where('matricule', 'EMP-0006')->firstOrFail();
+        $this->assertSame('onboarding', $onboardingEmployee->metadata['employment_status']);
+        $this->assertSame(5, EmployeeOnboardingTask::query()
+            ->where('employee_id', $onboardingEmployee->id)
+            ->count());
+        $this->assertSame(2, EmployeeOnboardingTask::query()
+            ->where('employee_id', $onboardingEmployee->id)
+            ->where('status', EmployeeOnboardingTask::STATUS_COMPLETED)
+            ->count());
+        $this->assertSame(1, PerformanceReview::query()
+            ->where('company_id', $company->id)
+            ->where('status', PerformanceReview::STATUS_SUBMITTED)
+            ->count());
+        $this->assertSame(1, PerformanceReview::query()
+            ->where('company_id', $company->id)
+            ->where('status', PerformanceReview::STATUS_DRAFT)
+            ->count());
+        $this->assertSame(4, Candidate::query()->where('company_id', $company->id)->count());
+        $this->assertSame(2, SelfServiceNote::query()
+            ->where('user_id', User::query()->where('email', 'employee@bravorh.com')->value('id'))
+            ->count());
         $this->assertSame(
             390,
             (int) AttendanceRecord::query()
@@ -155,7 +181,7 @@ class DemoHrDataSeederTest extends TestCase
             ->getJson('/api/v1/dashboard/admin')
             ->assertOk()
             ->assertJsonPath('data.kpis.0.id', 'employees')
-            ->assertJsonPath('data.kpis.0.value', 5);
+            ->assertJsonPath('data.kpis.0.value', 6);
         Storage::fake('public');
         $avatarResponse = $this->actingAs($admin, 'sanctum')
             ->postJson('/api/v1/employees/'.$brooklyn->id.'/avatar', [
@@ -229,10 +255,11 @@ class DemoHrDataSeederTest extends TestCase
         ]);
 
         $this->seed(DemoHrDataSeeder::class);
+        $this->seed(DemoWorkflowDataSeeder::class);
 
-        $this->assertSame(5, Employee::query()->where('company_id', $company->id)->count());
+        $this->assertSame(7, Employee::query()->where('company_id', $company->id)->count());
         $this->assertSame(
-            5 * ($previousMonthWorkingDays + $currentMonthSeededDays),
+            6 * ($previousMonthWorkingDays + $currentMonthSeededDays),
             AttendanceRecord::query()->where('company_id', $company->id)->count(),
         );
         $this->assertSame(2, AttendanceBreak::query()
@@ -241,6 +268,12 @@ class DemoHrDataSeederTest extends TestCase
         $this->assertSame(4, Designation::query()->where('company_id', $company->id)->count());
         $this->assertSame(2, Holiday::query()->where('company_id', $company->id)->count());
         $this->assertSame(4, CompensatoryOff::query()->where('company_id', $company->id)->count());
-        $this->assertSame(5, Payroll::query()->where('company_id', $company->id)->count());
+        $this->assertSame(6, Payroll::query()->where('company_id', $company->id)->count());
+        $this->assertSame(5, EmployeeOnboardingTask::query()
+            ->where('employee_id', $onboardingEmployee->id)
+            ->count());
+        $this->assertSame(2, SelfServiceNote::query()
+            ->where('user_id', $employeeUser->id)
+            ->count());
     }
 }

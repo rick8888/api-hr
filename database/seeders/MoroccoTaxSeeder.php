@@ -35,7 +35,7 @@ class MoroccoTaxSeeder extends Seeder
             ['country_id' => $morocco->id, 'code' => 'CNSS'],
             [
                 'name' => 'CNSS',
-                'description' => "Caisse Nationale de Sécurité Sociale (court terme + long terme)",
+                'description' => 'Caisse Nationale de Sécurité Sociale (court terme + long terme)',
                 'type' => LegalTax::TYPE_PERCENT,
                 'base_target' => LegalTax::BASE_GROSS,
                 'employer_rate' => 0.0860,
@@ -50,8 +50,8 @@ class MoroccoTaxSeeder extends Seeder
         $amo = LegalTax::query()->updateOrCreate(
             ['country_id' => $morocco->id, 'code' => 'AMO'],
             [
-                'name' => "AMO",
-                'description' => "Assurance Maladie Obligatoire",
+                'name' => 'AMO',
+                'description' => 'Assurance Maladie Obligatoire',
                 'type' => LegalTax::TYPE_PERCENT,
                 'base_target' => LegalTax::BASE_GROSS,
                 'employer_rate' => 0.0185,
@@ -67,14 +67,14 @@ class MoroccoTaxSeeder extends Seeder
             ['country_id' => $morocco->id, 'code' => 'IR'],
             [
                 'name' => 'Impôt sur le revenu (IR)',
-                'description' => "Barème progressif IR mensualisé (annual brackets / 12).",
+                'description' => 'Barème progressif version 2024 — à valider avant usage en production.',
                 'type' => LegalTax::TYPE_PROGRESSIVE,
                 'base_target' => LegalTax::BASE_TAXABLE,
                 'employer_rate' => 0,
                 'employee_rate' => 0,
                 'ceiling' => null,
                 'reduces_taxable' => false,
-                'is_active' => true,
+                'is_active' => false,
                 'sequence' => 100,
             ]
         );

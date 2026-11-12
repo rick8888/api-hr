@@ -87,4 +87,17 @@ final class AttendanceMetricsCalculatorTest extends TestCase
 
         $this->assertSame(510, $data['working_minutes']);
     }
+
+    public function test_resource_exposes_check_in_timestamp_in_application_timezone(): void
+    {
+        config(['app.timezone' => 'America/New_York']);
+        $record = new AttendanceRecord([
+            'attendance_date' => '2026-11-10',
+            'check_in' => '08:15:00',
+        ]);
+
+        $data = (new AttendanceRecordResource($record))->toArray(Request::create('/'));
+
+        $this->assertSame('2026-11-10T08:15:00-05:00', $data['check_in_at']);
+    }
 }

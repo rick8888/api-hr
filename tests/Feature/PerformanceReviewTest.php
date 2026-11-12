@@ -274,25 +274,26 @@ class PerformanceReviewTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonValidationErrors('status');
 
-        $this->actingAs($actor, 'sanctum')
+        $reviews = $this->actingAs($actor, 'sanctum')
             ->getJson('/api/v1/performance-reviews')
             ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.id', $reviewId)
-            ->assertJsonPath('data.0.status', PerformanceReview::STATUS_SUBMITTED)
-            ->assertJsonPath('data.0.rating', 4)
-            ->assertJsonPath('data.0.strengths', 'Strong collaboration')
-            ->assertJsonPath('data.0.objectives.0.progress', 100)
-            ->assertJsonCount(2, 'data.0.objectives.0.progress_history')
-            ->assertJsonPath('data.0.objectives.0.progress_history.1.previous_status', 'pending')
-            ->assertJsonPath('data.0.objectives.0.progress_history.1.previous_progress', 40)
-            ->assertJsonPath('data.0.objectives.0.progress_history.1.status', 'in_progress')
-            ->assertJsonPath('data.0.objectives.0.progress_history.1.progress', 65)
-            ->assertJsonPath(
-                'data.0.objectives.0.progress_history.1.comment',
-                'Started the planned development work.',
-            )
-            ->assertJsonPath('data.0.objectives.0.progress_history.1.updated_by.id', $actor->id);
+            ->json('data');
+        $createdReview = collect($reviews)->firstWhere('id', $reviewId);
+        $this->assertNotNull($createdReview);
+        $this->assertSame(PerformanceReview::STATUS_SUBMITTED, $createdReview['status']);
+        $this->assertSame(4, $createdReview['rating']);
+        $this->assertSame('Strong collaboration', $createdReview['strengths']);
+        $this->assertSame(100, $createdReview['objectives'][0]['progress']);
+        $this->assertCount(2, $createdReview['objectives'][0]['progress_history']);
+        $this->assertSame('pending', $createdReview['objectives'][0]['progress_history'][1]['previous_status']);
+        $this->assertSame(40, $createdReview['objectives'][0]['progress_history'][1]['previous_progress']);
+        $this->assertSame('in_progress', $createdReview['objectives'][0]['progress_history'][1]['status']);
+        $this->assertSame(65, $createdReview['objectives'][0]['progress_history'][1]['progress']);
+        $this->assertSame(
+            'Started the planned development work.',
+            $createdReview['objectives'][0]['progress_history'][1]['comment'],
+        );
+        $this->assertSame($actor->id, $createdReview['objectives'][0]['progress_history'][1]['updated_by']['id']);
 
         $activities = $this->actingAs($actor, 'sanctum')
             ->getJson("/api/v1/employees/{$employee->id}/activities")
@@ -451,11 +452,16 @@ class PerformanceReviewTest extends TestCase
             ->assertJsonPath('data.status', 'in_progress')
             ->assertJsonPath('data.progress', 65);
 
-        $this->actingAs($actor, 'sanctum')
+        $reviews = $this->actingAs($actor, 'sanctum')
             ->getJson('/api/v1/performance-reviews')
             ->assertOk()
-            ->assertJsonPath('data.0.objectives.0.training_enrollment.status', 'in_progress')
-            ->assertJsonPath('data.0.objectives.0.training_enrollment.progress', 65);
+            ->json('data');
+        $updatedReview = collect($reviews)->firstWhere('id', $reviewId);
+        $this->assertSame(
+            'in_progress',
+            $updatedReview['objectives'][0]['training_enrollment']['status'],
+        );
+        $this->assertSame(65, $updatedReview['objectives'][0]['training_enrollment']['progress']);
 
         $trainingActivities = collect(
             $this->actingAs($actor, 'sanctum')

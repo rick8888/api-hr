@@ -43,6 +43,8 @@ final class DemoHrDataSeeder extends Seeder
 {
     public function run(): void
     {
+        DemoEnvironmentGuard::ensureAllowed(self::class);
+
         $company = Company::query()->where('code', 'ACME')->firstOrFail();
         $country = Country::query()->findOrFail($company->country_id);
 
@@ -126,6 +128,16 @@ final class DemoHrDataSeeder extends Seeder
                 'department' => 'Ingénierie',
                 'salary' => 12500,
                 'hired_at' => '2023-06-05',
+            ],
+            [
+                'matricule' => 'EMP-0006',
+                'first_name' => 'Meriem',
+                'last_name' => 'Bennis',
+                'email' => 'meriem.bennis@example.ma',
+                'job_title' => 'Chargée de clientèle',
+                'department' => 'Opérations',
+                'salary' => 8500,
+                'hired_at' => now()->subMonthNoOverflow()->startOfMonth()->toDateString(),
             ],
         ];
 

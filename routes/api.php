@@ -7,10 +7,12 @@ use App\Http\Controllers\Api\AttendanceRecordController;
 use App\Http\Controllers\Api\AttendanceTypeController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CandidateController;
+use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\CompanyController;
 use App\Http\Controllers\Api\CompanyUserController;
 use App\Http\Controllers\Api\CompensatoryOffController;
 use App\Http\Controllers\Api\ComplianceObligationController;
+use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\CountryController;
 use App\Http\Controllers\Api\DayTypeController;
 use App\Http\Controllers\Api\DepartmentController;
@@ -40,6 +42,7 @@ use App\Http\Controllers\Api\LeaveRequestController;
 use App\Http\Controllers\Api\LeaveTypeController;
 use App\Http\Controllers\Api\LegalTaxController;
 use App\Http\Controllers\Api\LoanController;
+use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\Api\PaymentMethodController;
 use App\Http\Controllers\Api\PayrollController;
 use App\Http\Controllers\Api\PayrollCycleController;
@@ -53,6 +56,7 @@ use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\SalaryComponentController;
 use App\Http\Controllers\Api\SelfServiceAttendanceController;
 use App\Http\Controllers\Api\SelfServiceLeaveBalanceController;
+use App\Http\Controllers\Api\SelfServiceNoteController;
 use App\Http\Controllers\Api\SelfServicePayslipsController;
 use App\Http\Controllers\Api\SelfServiceProfileController;
 use App\Http\Controllers\Api\ShiftController;
@@ -84,6 +88,11 @@ Route::get('/user', function (Request $request) {
 Route::prefix('v1')->group(function () {
 
     Route::post('auth/login', [AuthController::class, 'login']);
+    Route::post('auth/password/email', [PasswordResetController::class, 'sendResetLink'])
+        ->middleware('throttle:5,1');
+    Route::post('auth/password/reset', [PasswordResetController::class, 'reset'])
+        ->middleware('throttle:5,1');
+    Route::post('contact', [ContactController::class, 'store'])->middleware('throttle:5,1');
 
     // Webhooks publics (Meta WhatsApp Cloud API)
     Route::get('webhooks/whatsapp', [WhatsAppWebhookController::class, 'verify']);
@@ -92,11 +101,22 @@ Route::prefix('v1')->group(function () {
     Route::middleware(['auth:sanctum', 'company.active'])->group(function () {
         Route::post('auth/logout', [AuthController::class, 'logout']);
         Route::get('auth/me', [AuthController::class, 'me']);
+        Route::get('chat/channels', [ChatController::class, 'channels']);
+        Route::get('chat/channels/{channel}/messages', [ChatController::class, 'messages']);
+        Route::post('chat/channels/{channel}/messages', [ChatController::class, 'send'])
+            ->middleware('throttle:30,1');
+        Route::get('chat/attachments/{attachment}/download', [ChatController::class, 'downloadAttachment'])
+            ->name('chat.attachments.download');
 
         Route::middleware('permission:self_service.access')->group(function () {
             Route::get('self-service/profile', [SelfServiceProfileController::class, 'show']);
             Route::put('self-service/profile', [SelfServiceProfileController::class, 'update']);
             Route::put('self-service/profile/password', [SelfServiceProfileController::class, 'updatePassword']);
+            Route::get('self-service/notes', [SelfServiceNoteController::class, 'index']);
+            Route::post('self-service/notes', [SelfServiceNoteController::class, 'store']);
+            Route::put('self-service/notes/{note}', [SelfServiceNoteController::class, 'update']);
+            Route::patch('self-service/notes/{note}', [SelfServiceNoteController::class, 'update']);
+            Route::delete('self-service/notes/{note}', [SelfServiceNoteController::class, 'destroy']);
 
             Route::get('self-service/payslips', [SelfServicePayslipsController::class, 'index']);
             Route::get('self-service/payslips/{payroll}/pdf', [SelfServicePayslipsController::class, 'downloadPdf']);

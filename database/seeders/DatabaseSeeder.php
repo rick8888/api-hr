@@ -16,9 +16,6 @@ class DatabaseSeeder extends Seeder
             SubscriptionSeeder::class,
             PaymentMethodSeeder::class,
             ComplianceSeeder::class,
-            DemoSeeder::class,
-            CompanySeeder::class,
-            AuthSeeder::class,
             RoleSeeder::class,
             AttendanceTypeSeeder::class,
             RegularizationTypeSeeder::class,
@@ -37,8 +34,13 @@ class DatabaseSeeder extends Seeder
 
         if (app()->environment(['local', 'testing'])) {
             $this->call([
+                DemoSeeder::class,
+                CompanySeeder::class,
+                AuthSeeder::class,
                 PayrollCountryTestDataSeeder::class,
                 DemoHrDataSeeder::class,
+                DemoWorkflowDataSeeder::class,
+                DemoEmployeeOffboardingSeeder::class,
             ]);
         }
     }

@@ -6,6 +6,7 @@ namespace App\Http\Resources;
 
 use App\Domain\Attendance\Models\AttendanceBreak;
 use App\Domain\Attendance\Models\AttendanceRecord;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -34,6 +35,7 @@ class AttendanceRecordResource extends JsonResource
             'site_id' => $this->site_id,
             'location' => $this->site?->name,
             'check_in' => $this->time($this->check_in),
+            'check_in_at' => $this->checkInTimestamp(),
             'check_out' => $this->time($this->check_out),
             'working_minutes' => $worked,
             'late_minutes' => (int) $this->late_minutes,
@@ -60,6 +62,18 @@ class AttendanceRecordResource extends JsonResource
     private function time(mixed $value): ?string
     {
         return $value === null || $value === '' ? null : substr((string) $value, 0, 5);
+    }
+
+    private function checkInTimestamp(): ?string
+    {
+        if ($this->attendance_date === null || $this->check_in === null || $this->check_in === '') {
+            return null;
+        }
+
+        return Carbon::parse(
+            $this->attendance_date->toDateString().' '.substr((string) $this->check_in, 0, 8),
+            config('app.timezone'),
+        )->toIso8601String();
     }
 
     private function workedMinutes(): int

@@ -6,6 +6,8 @@ namespace Tests\Unit;
 
 use App\Domain\Company\Models\Country;
 use App\Domain\Tax\Models\LegalTax;
+use Database\Seeders\CountrySeeder;
+use Database\Seeders\LegalTaxSeeder;
 use Database\Seeders\ProvisionalPayrollProfilesSeeder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -71,9 +73,9 @@ final class LegalTaxSeederTest extends TestCase
         });
     }
 
-    public function test_provisional_country_profiles_are_seeded_active_with_brackets(): void
+    public function test_unvalidated_country_profiles_are_seeded_inactive_with_brackets(): void
     {
-        (new ProvisionalPayrollProfilesSeeder())->run();
+        (new ProvisionalPayrollProfilesSeeder)->run();
 
         $senegal = Country::query()->where('code', 'SN')->firstOrFail();
         $ivoryCoast = Country::query()->where('code', 'CIV')->firstOrFail();
@@ -99,14 +101,14 @@ final class LegalTaxSeederTest extends TestCase
                 ->all(),
         );
         $this->assertSame(
-            3,
+            0,
             LegalTax::query()
-                ->where('country_id', $republicOfCongo->id)
+                ->whereIn('country_id', [$ivoryCoast->id, $republicOfCongo->id, $senegal->id])
                 ->where('is_active', true)
                 ->count(),
         );
         $this->assertSame(0, LegalTax::query()->where('country_id', Country::query()->where('code', 'MA')->value('id'))->count());
-        (new \Database\Seeders\LegalTaxSeeder())->seedCountries(['CD']);
+        (new LegalTaxSeeder)->seedCountries(['CD']);
         $democraticRepublicOfCongo = Country::query()->where('code', 'CD')->firstOrFail();
         $this->assertSame(4, LegalTax::query()->where('country_id', $democraticRepublicOfCongo->id)->count());
         $this->assertSame(
@@ -117,9 +119,9 @@ final class LegalTaxSeederTest extends TestCase
                 ->value('formula'),
         );
         $this->assertSame(
-            13,
+            0,
             LegalTax::query()
-                ->whereIn('country_id', [$senegal->id, $ivoryCoast->id, $republicOfCongo->id])
+                ->whereIn('country_id', [$senegal->id, $ivoryCoast->id, $republicOfCongo->id, $democraticRepublicOfCongo->id])
                 ->where('is_active', true)
                 ->count(),
         );
@@ -132,5 +134,49 @@ final class LegalTaxSeederTest extends TestCase
                     ->select('id'))
                 ->count(),
         );
+    }
+
+    public function test_moroccan_2024_income_tax_is_not_used_for_current_payrolls(): void
+    {
+        (new CountrySeeder)->run();
+        (new LegalTaxSeeder)->seedCountries(['MA']);
+
+        $morocco = Country::query()->where('code', 'MA')->firstOrFail();
+        $incomeTax = LegalTax::query()
+            ->where('country_id', $morocco->id)
+            ->where('code', 'IR')
+            ->firstOrFail();
+
+        $this->assertFalse($incomeTax->is_active);
+        $this->assertStringContainsString('version 2024', $incomeTax->description);
+    }
+
+    public function test_tax_safety_migration_disables_legacy_active_rules(): void
+    {
+        $countryId = DB::table('countries')->insertGetId([
+            'code' => 'CD',
+            'name' => 'RDC',
+            'currency' => 'CDF',
+            'locale' => 'fr_CD',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('legal_taxes')->insert([
+            'country_id' => $countryId,
+            'code' => 'CNSS_RDC',
+            'name' => 'CNSS RDC',
+            'description' => '[À VALIDER] ancienne règle encore active',
+            'category' => 'social',
+            'type' => 'percent',
+            'base_target' => 'GROSS',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $migration = require database_path('migrations/2026_11_12_100000_disable_unvalidated_legal_tax_profiles.php');
+        $migration->up();
+
+        $this->assertFalse((bool) DB::table('legal_taxes')->where('code', 'CNSS_RDC')->value('is_active'));
     }
 }

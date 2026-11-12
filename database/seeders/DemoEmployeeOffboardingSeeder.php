@@ -16,6 +16,8 @@ class DemoEmployeeOffboardingSeeder extends Seeder
 {
     public function run(): void
     {
+        DemoEnvironmentGuard::ensureAllowed(self::class);
+
         $company = Company::query()->where('code', 'ACME')->firstOrFail();
         $country = Country::query()->findOrFail($company->country_id);
         $actor = User::query()

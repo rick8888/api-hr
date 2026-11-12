@@ -12,6 +12,8 @@ class AuthSeeder extends Seeder
 {
     public function run(): void
     {
+        DemoEnvironmentGuard::ensureAllowed(self::class);
+
         $demoPassword = bcrypt('password123');
 
         $bravo = Company::query()->where('code', 'BRAVO')->first();

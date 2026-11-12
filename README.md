@@ -75,9 +75,39 @@ php artisan serve
 les seeders de démonstration enregistrés dans `DatabaseSeeder`. La commande est
 limitée aux environnements `local` et `testing` et demande confirmation.
 Pour l'exécuter sans invite dans ces environnements : `php artisan demo:reset --force`.
+Les entreprises, comptes et données de démonstration ne sont créés par
+`DatabaseSeeder` qu'en `local` ou `testing`; un `db:seed` en production ne crée
+donc pas les comptes de démonstration. Configurez `FRONTEND_URL` avec l'origine
+du frontend pour que les liens de réinitialisation de mot de passe pointent vers
+l'application web.
+
+### Messagerie temps réel
+
+La messagerie utilise Laravel Reverb. Renseignez les paramètres `REVERB_*` dans
+le `.env` du backend et les paramètres `VITE_REVERB_*` du `.env` frontend avec
+la même clé d'application et l'hôte/port accessibles depuis le navigateur.
+Les valeurs d'exemple servent uniquement au développement local.
+
+Démarrez l'API puis le serveur WebSocket dans deux terminaux :
+
+```bash
+php artisan serve
+php artisan reverb:start --host=0.0.0.0 --port=8080
+```
+
+Le frontend utilise `VITE_API_BASE_URL` pour l'authentification des salons
+privés. En production, configurez l'URL publique WSS, TLS et des clés Reverb
+propres à l'environnement; ne réutilisez pas les valeurs d'exemple.
+
+Les messages acceptent jusqu'à 5 pièces jointes (PDF, images, documents Office,
+CSV ou TXT), de 10 Mo maximum chacune. Elles sont conservées sur le disque privé
+local et ne peuvent être téléchargées que par les membres autorisés du salon.
+
+Les règles fiscales portant la mention « à valider » et le barème marocain IR
+2024 sont inactifs dans les calculs automatiques jusqu'à leur validation.
 
 Les seeders fournissent notamment :
-- Les pays et barèmes fiscaux configurés, dont le Maroc et la RDC.
+- Les pays et règles fiscales vérifiées/configurées. Les règles fiscales marquées « à valider » et l'IR marocain 2024 restent désactivés pour les calculs automatiques jusqu'à validation.
 - L'entreprise démo `Acme Maroc SARL`, plusieurs employés et des structures salariales.
 - Des présences sur le mois en cours et le précédent, pauses, heures supplémentaires et régularisations.
 - Des congés avec plusieurs statuts, soldes et ajustements, jours fériés et repos compensatoires.
@@ -85,6 +115,8 @@ Les seeders fournissent notamment :
 - Des notes de frais et prêts, ainsi que des bulletins et structures de paie.
 - Des documents et demandes de documents, du matériel avec demandes et attributions.
 - Des formations et inscriptions, des offres et candidatures de démonstration.
+- Un parcours d’intégration en cours, une sortie avec checklist complétée et des évaluations avec objectifs et historique de progression.
+- Des notes persistantes de démonstration pour le compte salarié, recréées de façon idempotente.
 - Des abonnements, factures et données de paie de test multi-pays.
 
 ---

@@ -16,8 +16,7 @@ use RuntimeException;
  * Source : database/data/legal-taxes.json
  * Pays : MA (Maroc), CD (RDC), CG (Congo), CIV (Côte d'Ivoire), SN (Sénégal)
  *
- * Les profils CIV/SN marqués « à valider » sont activés provisoirement ; leurs
- * règles doivent être confirmées avant tout usage en production.
+ * Les règles marquées « à valider » restent inactives jusqu'à leur validation.
  */
 class LegalTaxSeeder extends Seeder
 {
@@ -27,7 +26,7 @@ class LegalTaxSeeder extends Seeder
     }
 
     /**
-     * @param list<string> $countryCodes Empty means seed every country in the source file.
+     * @param  list<string>  $countryCodes  Empty means seed every country in the source file.
      */
     public function seedCountries(array $countryCodes): void
     {
@@ -42,6 +41,7 @@ class LegalTaxSeeder extends Seeder
 
         foreach ($rows as $row) {
             $countryCode = (string) ($row['country_code'] ?? '');
+            $description = (string) ($row['description'] ?? '');
             if ($countryCodes !== [] && ! in_array($countryCode, $countryCodes, true)) {
                 continue;
             }
@@ -50,6 +50,7 @@ class LegalTaxSeeder extends Seeder
 
             if ($country === null) {
                 $this->command?->warn("Pays ignoré (introuvable) : {$countryCode}");
+
                 continue;
             }
 
@@ -71,7 +72,8 @@ class LegalTaxSeeder extends Seeder
                     'floor' => $row['floor'] ?? null,
                     'formula' => $row['formula'] ?? null,
                     'reduces_taxable' => (bool) ($row['reduces_taxable'] ?? false),
-                    'is_active' => (bool) ($row['is_active'] ?? true),
+                    'is_active' => (bool) ($row['is_active'] ?? true)
+                        && ! str_contains($description, '[À VALIDER'),
                     'sequence' => (int) ($row['sequence'] ?? 100),
                     'effective_from' => $row['effective_from'] ?? null,
                     'effective_to' => $row['effective_to'] ?? null,
