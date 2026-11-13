@@ -54,7 +54,6 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
     'frontend_url' => env('FRONTEND_URL', 'http://localhost:5173'),
-    'demo_seed_password' => env('DEMO_SEED_PASSWORD'),
     'demo_seed_in_progress' => false,
 
     /*

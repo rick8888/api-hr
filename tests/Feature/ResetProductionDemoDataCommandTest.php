@@ -27,7 +27,6 @@ final class ResetProductionDemoDataCommandTest extends TestCase
     public function test_production_demo_reset_does_not_require_a_backup_file(): void
     {
         $this->app->detectEnvironment(static fn (): string => 'production');
-        config(['app.demo_seed_password' => 'demo-password-at-least-16']);
         app(DatabaseSeeder::class)->run();
 
         $database = (string) config('database.connections.'.config('database.default').'.database');
@@ -41,7 +40,6 @@ final class ResetProductionDemoDataCommandTest extends TestCase
     public function test_existing_unmarked_company_code_blocks_reset_without_modifying_the_company(): void
     {
         $this->app->detectEnvironment(static fn (): string => 'production');
-        config(['app.demo_seed_password' => 'demo-password-at-least-16']);
         app(DatabaseSeeder::class)->run();
 
         $country = Country::query()->where('code', 'MA')->firstOrFail();
@@ -68,7 +66,6 @@ final class ResetProductionDemoDataCommandTest extends TestCase
     public function test_reset_can_be_cancelled_before_writing_demo_data(): void
     {
         $this->app->detectEnvironment(static fn (): string => 'production');
-        config(['app.demo_seed_password' => 'demo-password-at-least-16']);
         app(DatabaseSeeder::class)->run();
 
         $database = (string) config('database.connections.'.config('database.default').'.database');
@@ -83,12 +80,9 @@ final class ResetProductionDemoDataCommandTest extends TestCase
         $this->assertDatabaseMissing('users', ['email' => 'contact@acme-maroc.demo']);
     }
 
-    public function test_production_reset_seeds_only_the_marked_demo_fixtures_with_a_configured_password(): void
+    public function test_production_reset_seeds_only_marked_demo_fixtures_without_password_configuration(): void
     {
         $this->app->detectEnvironment(static fn (): string => 'production');
-        $demoPassword = 'demo-password-at-least-16';
-        config(['app.demo_seed_password' => $demoPassword]);
-
         app(DatabaseSeeder::class)->run();
 
         $database = (string) config('database.connections.'.config('database.default').'.database');
@@ -116,7 +110,8 @@ final class ResetProductionDemoDataCommandTest extends TestCase
         ));
 
         $acmeContact = User::query()->where('email', 'contact@acme-maroc.demo')->firstOrFail();
-        $this->assertTrue(Hash::check($demoPassword, $acmeContact->password));
+        $firstPasswordHash = $acmeContact->password;
+        $this->assertFalse(Hash::check('password123', $firstPasswordHash));
         $this->assertDatabaseMissing('users', ['email' => 'superadmin@bravorh.com']);
         $this->assertDatabaseMissing('users', ['email' => 'admin@example.com']);
 
@@ -131,5 +126,9 @@ final class ResetProductionDemoDataCommandTest extends TestCase
         $this->assertSame(6, Company::query()->count());
         $this->assertSame($employeeCount, Employee::query()->count());
         $this->assertSame($userCount, User::query()->count());
+        $this->assertNotSame(
+            $firstPasswordHash,
+            User::query()->where('email', 'contact@acme-maroc.demo')->value('password'),
+        );
     }
 }

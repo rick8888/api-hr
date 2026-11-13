@@ -74,13 +74,6 @@ final class ResetProductionDemoData extends Command
             return self::FAILURE;
         }
 
-        $demoPassword = config('app.demo_seed_password');
-        if (! is_string($demoPassword) || strlen($demoPassword) < 16) {
-            $this->error('Configurez DEMO_SEED_PASSWORD avec au moins 16 caractères sur le serveur.');
-
-            return self::FAILURE;
-        }
-
         $connection = (string) config('database.default');
         $database = config("database.connections.{$connection}.database");
         if (! is_string($database) || trim($database) === '') {
@@ -110,7 +103,11 @@ final class ResetProductionDemoData extends Command
         }
 
         $previousAuthorization = config('app.demo_seed_in_progress');
-        config(['app.demo_seed_in_progress' => true]);
+        $previousDemoPassword = config('app.demo_seed_password');
+        config([
+            'app.demo_seed_in_progress' => true,
+            'app.demo_seed_password' => bin2hex(random_bytes(32)),
+        ]);
 
         try {
             DB::transaction(function (): void {
@@ -128,7 +125,10 @@ final class ResetProductionDemoData extends Command
                 }
             });
         } finally {
-            config(['app.demo_seed_in_progress' => $previousAuthorization]);
+            config([
+                'app.demo_seed_in_progress' => $previousAuthorization,
+                'app.demo_seed_password' => $previousDemoPassword,
+            ]);
         }
 
         $this->info('Les données de démonstration ont été actualisées avec succès.');
