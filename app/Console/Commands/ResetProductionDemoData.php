@@ -45,6 +45,45 @@ final class ResetProductionDemoData extends Command
         'PAYROLL-TEST-CG',
     ];
 
+    private const LEGACY_DEMO_COMPANIES = [
+        'ACME' => [
+            'name' => 'Acme Maroc SARL',
+            'email' => 'contact@acme-maroc.demo',
+            'tax_id' => 'IF-12345678',
+            'registration_number' => 'RC-456789',
+            'subdomain' => 'acme-maroc',
+            'country' => 'MA',
+            'currency' => 'MAD',
+        ],
+        'BRAVO' => [
+            'name' => 'Bravo RH Demo',
+            'email' => 'tenant@bravorh.com',
+            'tax_id' => null,
+            'registration_number' => null,
+            'subdomain' => 'bravo',
+            'country' => 'MA',
+            'currency' => 'MAD',
+        ],
+        'TECHNOVA' => [
+            'name' => 'TechNova SARL',
+            'email' => 'hr@technova.io',
+            'tax_id' => null,
+            'registration_number' => null,
+            'subdomain' => 'technova',
+            'country' => 'FR',
+            'currency' => 'EUR',
+        ],
+        'GREENLOG' => [
+            'name' => 'GreenLogistics',
+            'email' => 'ops@greenlogistics.com',
+            'tax_id' => null,
+            'registration_number' => null,
+            'subdomain' => 'greenlog',
+            'country' => 'CIV',
+            'currency' => 'XOF',
+        ],
+    ];
+
     private const FIXTURE_USER_EMAILS = [
         'contact@acme-maroc.demo',
         'tenant@bravorh.com',
@@ -149,8 +188,18 @@ final class ResetProductionDemoData extends Command
                 && ($settings['demo_fixture'] ?? false) === true;
             $isTestFixture = in_array($company->code, self::TEST_COMPANY_CODES, true)
                 && ($settings['test_fixture'] ?? false) === true;
+            $legacyFixture = self::LEGACY_DEMO_COMPANIES[$company->code] ?? null;
+            $isLegacyDemoFixture = is_array($legacyFixture)
+                && $company->name === $legacyFixture['name']
+                && $company->email === $legacyFixture['email']
+                && $company->tax_id === $legacyFixture['tax_id']
+                && $company->registration_number === $legacyFixture['registration_number']
+                && $company->currency === $legacyFixture['currency']
+                && ($settings['subdomain'] ?? null) === $legacyFixture['subdomain']
+                && ($settings['primary_contact']['email'] ?? null) === $legacyFixture['email']
+                && $company->country()->where('code', $legacyFixture['country'])->exists();
 
-            if ($company->trashed() || (! $isDemoFixture && ! $isTestFixture)) {
+            if ($company->trashed() || (! $isDemoFixture && ! $isTestFixture && ! $isLegacyDemoFixture)) {
                 $this->error(
                     "La société « {$company->code} » existe sans marqueur de démo vérifiable. "
                     .'Aucune donnée ne sera modifiée ; vérifiez cette société manuellement.',

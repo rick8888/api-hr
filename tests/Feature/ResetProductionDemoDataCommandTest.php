@@ -63,6 +63,106 @@ final class ResetProductionDemoDataCommandTest extends TestCase
         $this->assertDatabaseMissing('users', ['email' => 'contact@acme-maroc.demo']);
     }
 
+    public function test_exact_legacy_acme_demo_fixture_is_recognized_without_a_marker(): void
+    {
+        $this->app->detectEnvironment(static fn (): string => 'production');
+        app(DatabaseSeeder::class)->run();
+
+        $country = Country::query()->where('code', 'MA')->firstOrFail();
+        Company::query()->create([
+            'code' => 'ACME',
+            'country_id' => $country->id,
+            'name' => 'Acme Maroc SARL',
+            'legal_name' => 'Acme Maroc SARL',
+            'tax_id' => 'IF-12345678',
+            'registration_number' => 'RC-456789',
+            'email' => 'contact@acme-maroc.demo',
+            'currency' => 'MAD',
+            'settings' => [
+                'subdomain' => 'acme-maroc',
+                'primary_contact' => ['email' => 'contact@acme-maroc.demo'],
+            ],
+            'is_active' => true,
+        ]);
+
+        $database = (string) config('database.connections.'.config('database.default').'.database');
+        $this->artisan('demo:reset-production')
+            ->expectsQuestion('Saisissez exactement le nom de la base ciblée pour continuer', $database)
+            ->expectsConfirmation('Actualiser les données de démonstration sur cette base de production ?', 'no')
+            ->expectsOutputToContain('Opération annulée. Aucune donnée n’a été modifiée.')
+            ->assertExitCode(0);
+
+        $this->assertDatabaseHas('companies', [
+            'code' => 'ACME',
+            'name' => 'Acme Maroc SARL',
+        ]);
+        $this->assertDatabaseMissing('users', ['email' => 'contact@acme-maroc.demo']);
+    }
+
+    public function test_legacy_demo_companies_are_recognized_and_can_be_refreshed(): void
+    {
+        $this->app->detectEnvironment(static fn (): string => 'production');
+        app(DatabaseSeeder::class)->run();
+
+        $legacyCompanies = [
+            [
+                'code' => 'BRAVO',
+                'country' => 'MA',
+                'name' => 'Bravo RH Demo',
+                'email' => 'tenant@bravorh.com',
+                'currency' => 'MAD',
+                'subdomain' => 'bravo',
+            ],
+            [
+                'code' => 'TECHNOVA',
+                'country' => 'FR',
+                'name' => 'TechNova SARL',
+                'email' => 'hr@technova.io',
+                'currency' => 'EUR',
+                'subdomain' => 'technova',
+            ],
+            [
+                'code' => 'GREENLOG',
+                'country' => 'CIV',
+                'name' => 'GreenLogistics',
+                'email' => 'ops@greenlogistics.com',
+                'currency' => 'XOF',
+                'subdomain' => 'greenlog',
+            ],
+        ];
+
+        foreach ($legacyCompanies as $data) {
+            $country = Country::query()->where('code', $data['country'])->firstOrFail();
+            Company::query()->create([
+                'code' => $data['code'],
+                'country_id' => $country->id,
+                'name' => $data['name'],
+                'legal_name' => $data['name'],
+                'email' => $data['email'],
+                'currency' => $data['currency'],
+                'settings' => [
+                    'subdomain' => $data['subdomain'],
+                    'primary_contact' => ['email' => $data['email']],
+                ],
+                'is_active' => true,
+            ]);
+        }
+
+        $database = (string) config('database.connections.'.config('database.default').'.database');
+        $this->artisan('demo:reset-production')
+            ->expectsQuestion('Saisissez exactement le nom de la base ciblée pour continuer', $database)
+            ->expectsConfirmation('Actualiser les données de démonstration sur cette base de production ?', 'no')
+            ->expectsOutputToContain('Opération annulée. Aucune donnée n’a été modifiée.')
+            ->assertExitCode(0);
+
+        foreach ($legacyCompanies as $data) {
+            $this->assertDatabaseHas('companies', [
+                'code' => $data['code'],
+                'name' => $data['name'],
+            ]);
+        }
+    }
+
     public function test_reset_can_be_cancelled_before_writing_demo_data(): void
     {
         $this->app->detectEnvironment(static fn (): string => 'production');
