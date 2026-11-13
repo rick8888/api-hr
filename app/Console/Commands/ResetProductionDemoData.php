@@ -145,7 +145,7 @@ final class ResetProductionDemoData extends Command
         $previousDemoPassword = config('app.demo_seed_password');
         config([
             'app.demo_seed_in_progress' => true,
-            'app.demo_seed_password' => bin2hex(random_bytes(32)),
+            'app.demo_seed_password' => 'password123',
         ]);
 
         try {

@@ -90,13 +90,14 @@ inclut les jeux de paie de démonstration pour le Maroc, la France, la Côte
 d’Ivoire, la RDC et le Congo-Brazzaville. Elle ne supprime pas les anciennes
 lignes de démonstration qui ne sont plus produites par les seeders.
 
-Aucune variable `DEMO_SEED_PASSWORD` n’est nécessaire : la commande génère un
-mot de passe aléatoire non affiché pour les comptes de démonstration créés ou
-actualisés. Ces comptes n’auront pas de mot de passe connu ; utilisez la
-réinitialisation de mot de passe si leur connexion est nécessaire. Aucun compte
-super-administrateur de démonstration n’est créé en production. La commande ne
-requiert pas de fichier de sauvegarde, mais une sauvegarde reste recommandée
-avant toute opération sur une base de production.
+Aucune variable `DEMO_SEED_PASSWORD` n’est nécessaire : les comptes de
+démonstration créés ou actualisés utilisent le mot de passe `password123`.
+N’utilisez cette commande que si ces comptes de démonstration sont isolés et
+qu’un mot de passe connu est acceptable ; ce mot de passe est faible et ne doit
+jamais être utilisé pour un compte client. Aucun compte super-administrateur de
+démonstration n’est créé en production. La commande ne requiert pas de fichier
+de sauvegarde, mais une sauvegarde reste recommandée avant toute opération sur
+une base de production.
 
 ```bash
 php artisan demo:reset-production

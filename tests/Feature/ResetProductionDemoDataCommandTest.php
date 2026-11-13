@@ -180,7 +180,7 @@ final class ResetProductionDemoDataCommandTest extends TestCase
         $this->assertDatabaseMissing('users', ['email' => 'contact@acme-maroc.demo']);
     }
 
-    public function test_production_reset_seeds_only_marked_demo_fixtures_without_password_configuration(): void
+    public function test_production_reset_sets_password123_only_for_demo_accounts(): void
     {
         $this->app->detectEnvironment(static fn (): string => 'production');
         app(DatabaseSeeder::class)->run();
@@ -210,8 +210,11 @@ final class ResetProductionDemoDataCommandTest extends TestCase
         ));
 
         $acmeContact = User::query()->where('email', 'contact@acme-maroc.demo')->firstOrFail();
-        $firstPasswordHash = $acmeContact->password;
-        $this->assertFalse(Hash::check('password123', $firstPasswordHash));
+        $this->assertTrue(Hash::check('password123', $acmeContact->password));
+        $bravoTenant = User::query()->where('email', 'tenant@bravorh.com')->firstOrFail();
+        $this->assertTrue(Hash::check('password123', $bravoTenant->password));
+        $demoAdmin = User::query()->where('email', 'admin@bravorh.com')->firstOrFail();
+        $this->assertTrue(Hash::check('password123', $demoAdmin->password));
         $this->assertDatabaseMissing('users', ['email' => 'superadmin@bravorh.com']);
         $this->assertDatabaseMissing('users', ['email' => 'admin@example.com']);
 
@@ -226,9 +229,9 @@ final class ResetProductionDemoDataCommandTest extends TestCase
         $this->assertSame(6, Company::query()->count());
         $this->assertSame($employeeCount, Employee::query()->count());
         $this->assertSame($userCount, User::query()->count());
-        $this->assertNotSame(
-            $firstPasswordHash,
-            User::query()->where('email', 'contact@acme-maroc.demo')->value('password'),
-        );
+        $this->assertTrue(Hash::check(
+            'password123',
+            User::query()->where('email', 'contact@acme-maroc.demo')->valueOrFail('password'),
+        ));
     }
 }
