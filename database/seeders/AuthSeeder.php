@@ -7,6 +7,7 @@ namespace Database\Seeders;
 use App\Domain\Company\Models\Company;
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class AuthSeeder extends Seeder
 {
@@ -14,7 +15,7 @@ class AuthSeeder extends Seeder
     {
         DemoEnvironmentGuard::ensureAllowed(self::class);
 
-        $demoPassword = bcrypt('password123');
+        $demoPassword = Hash::make(config('app.demo_seed_password') ?: 'password123');
 
         $bravo = Company::query()->where('code', 'BRAVO')->first();
         $acme = Company::query()->where('code', 'ACME')->first();
@@ -46,6 +47,10 @@ class AuthSeeder extends Seeder
             ],
         ];
 
+        if (app()->environment('production')) {
+            $users = array_filter($users, static fn (array $user): bool => $user['role'] !== 'super_admin');
+        }
+
         foreach ($users as $data) {
             User::query()->updateOrCreate(
                 ['email' => $data['email']],
@@ -58,13 +63,15 @@ class AuthSeeder extends Seeder
             );
         }
 
-        User::query()->updateOrCreate(
-            ['email' => 'admin@example.com'],
-            [
-                'name' => 'Admin',
-                'role' => 'super_admin',
-                'password' => bcrypt('password'),
-            ]
-        );
+        if (! app()->environment('production')) {
+            User::query()->updateOrCreate(
+                ['email' => 'admin@example.com'],
+                [
+                    'name' => 'Admin',
+                    'role' => 'super_admin',
+                    'password' => Hash::make('password'),
+                ]
+            );
+        }
     }
 }

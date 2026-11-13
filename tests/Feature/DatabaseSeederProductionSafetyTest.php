@@ -13,6 +13,7 @@ use Database\Seeders\DemoEmployeeOffboardingSeeder;
 use Database\Seeders\DemoHrDataSeeder;
 use Database\Seeders\DemoSeeder;
 use Database\Seeders\DemoWorkflowDataSeeder;
+use Database\Seeders\PayrollCountryTestDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
 use Tests\TestCase;
@@ -45,6 +46,7 @@ class DatabaseSeederProductionSafetyTest extends TestCase
             DemoHrDataSeeder::class,
             DemoWorkflowDataSeeder::class,
             DemoEmployeeOffboardingSeeder::class,
+            PayrollCountryTestDataSeeder::class,
         ];
 
         foreach ($seeders as $seeder) {

@@ -11,15 +11,12 @@ use App\Domain\Payroll\Models\EmployeeSalaryStructure;
 use App\Domain\Tax\Models\CompanyTax;
 use App\Domain\Tax\Models\LegalTax;
 use Illuminate\Database\Seeder;
-use RuntimeException;
 
 final class PayrollCountryTestDataSeeder extends Seeder
 {
     public function run(): void
     {
-        if (! app()->environment(['local', 'testing'])) {
-            throw new RuntimeException('Les données de paie de test ne peuvent être créées qu’en local ou en test.');
-        }
+        DemoEnvironmentGuard::ensureAllowed(self::class);
 
         $this->seedCountryEmployee(
             countryCode: 'CD',

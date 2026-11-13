@@ -81,6 +81,32 @@ donc pas les comptes de démonstration. Configurez `FRONTEND_URL` avec l'origine
 du frontend pour que les liens de réinitialisation de mot de passe pointent vers
 l'application web.
 
+### Actualiser les données de démonstration en production
+
+La commande `demo:reset-production` actualise les fixtures connues sans appeler
+`migrate:fresh`, sans supprimer de tables et sans relancer les seeders globaux
+qui pourraient écraser les personnalisations des entreprises clientes. Elle
+inclut les jeux de paie de démonstration pour le Maroc, la France, la Côte
+d’Ivoire, la RDC et le Congo-Brazzaville. Elle ne supprime pas les anciennes
+lignes de démonstration qui ne sont plus produites par les seeders.
+
+Avant l’exécution, configurez `DEMO_SEED_PASSWORD` dans l’environnement du
+serveur avec un secret aléatoire d’au moins 16 caractères. Ce mot de passe
+protège les comptes de démonstration créés ou actualisés par la commande; aucun
+compte super-administrateur de démonstration n’est créé en production. La
+commande ne requiert pas de fichier de sauvegarde, mais une sauvegarde reste
+recommandée avant toute opération sur une base de production.
+
+```bash
+php artisan demo:reset-production
+```
+
+La commande demande de saisir le nom exact de la base puis exige une
+confirmation. Elle refuse de toucher aux sociétés portant les codes de démo si
+elles ne sont pas explicitement marquées comme fixtures, ainsi qu’aux comptes
+ou matricules de démo déjà associés à une entreprise cliente. En cas de conflit,
+vérifiez les enregistrements manuellement au lieu de forcer la commande.
+
 ### Messagerie temps réel
 
 La messagerie utilise Laravel Reverb. Renseignez les paramètres `REVERB_*` dans

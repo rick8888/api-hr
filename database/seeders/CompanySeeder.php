@@ -49,12 +49,14 @@ class CompanySeeder extends Seeder
             ],
         ];
 
+        $seededCompanies = collect();
+
         foreach ($companies as $data) {
             if ($data['country'] === null) {
                 continue;
             }
 
-            Company::query()->updateOrCreate(
+            $company = Company::query()->updateOrCreate(
                 ['code' => $data['code']],
                 [
                     'country_id' => $data['country']->id,
@@ -64,6 +66,7 @@ class CompanySeeder extends Seeder
                     'currency' => $data['currency'],
                     'is_active' => $data['is_active'] ?? true,
                     'settings' => [
+                        'demo_fixture' => true,
                         'subdomain' => strtolower($data['code']),
                         'legal_form' => 'SARL',
                         'industry' => 'Services',
@@ -82,12 +85,15 @@ class CompanySeeder extends Seeder
                     ],
                 ]
             );
+
+            $seededCompanies->push($company);
         }
 
         /** @var TenantContactUserService $tenantUsers */
         $tenantUsers = app(TenantContactUserService::class);
-        Company::query()->each(
-            fn (Company $company) => $tenantUsers->syncForCompany($company, self::TENANT_PASSWORD)
+        $password = config('app.demo_seed_password') ?: self::TENANT_PASSWORD;
+        $seededCompanies->each(
+            fn (Company $company) => $tenantUsers->syncForCompany($company, $password)
         );
     }
 }

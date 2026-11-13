@@ -41,6 +41,7 @@ class DemoSeeder extends Seeder
                 'currency' => 'MAD',
                 'is_active' => true,
                 'settings' => [
+                    'demo_fixture' => true,
                     'subdomain' => 'acme-maroc',
                     'legal_form' => 'SARL',
                     'vat_number' => 'IF-12345678',
@@ -70,7 +71,10 @@ class DemoSeeder extends Seeder
             ]
         );
 
-        app(TenantContactUserService::class)->syncForCompany($company, self::TENANT_PASSWORD);
+        app(TenantContactUserService::class)->syncForCompany(
+            $company,
+            config('app.demo_seed_password') ?: self::TENANT_PASSWORD,
+        );
 
         $components = [
             [
@@ -149,19 +153,22 @@ class DemoSeeder extends Seeder
             ]
         );
 
-        // Drop any previous structure to rebuild deterministically
-        EmployeeSalaryStructure::query()
-            ->where('employee_id', $employee->id)
-            ->forceDelete();
+        $structure = EmployeeSalaryStructure::withTrashed()->updateOrCreate(
+            ['employee_id' => $employee->id, 'name' => 'Structure 2026'],
+            [
+                'base_salary' => 12000,
+                'currency' => 'MAD',
+                'effective_from' => '2026-01-01',
+                'effective_to' => null,
+                'status' => EmployeeSalaryStructure::STATUS_ACTIVE,
+            ],
+        );
 
-        $structure = EmployeeSalaryStructure::query()->create([
-            'employee_id' => $employee->id,
-            'name' => 'Structure 2026',
-            'base_salary' => 12000,
-            'currency' => 'MAD',
-            'effective_from' => '2026-01-01',
-            'status' => EmployeeSalaryStructure::STATUS_ACTIVE,
-        ]);
+        if ($structure->trashed()) {
+            $structure->restore();
+        }
+
+        $structure->lines()->delete();
 
         $structureLines = [
             ['code' => 'PRIME_TRANSPORT',  'sequence' => 10],
