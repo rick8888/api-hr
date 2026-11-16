@@ -31,12 +31,13 @@ class ComplianceObligationController extends Controller
         $countryId = $request->integer('country_id') ?: null;
         $user = $request->user();
 
-        // Tenant : uniquement le référentiel de son pays
-        if ($user && $user->role === 'tenant') {
+        // Company users can only read the deadline calendar for their own country.
+        if ($user && ! $user->hasPermission('platform.manage')) {
             $countryId = $user->company?->country_id
                 ?? \App\Domain\Company\Models\Company::query()
                     ->whereKey($user->company_id)
-                    ->value('country_id');
+                    ->value('country_id')
+                ?? -1;
         }
 
         return ComplianceObligationResource::collection(

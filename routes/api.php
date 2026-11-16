@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\CompanyController;
 use App\Http\Controllers\Api\CompanyUserController;
 use App\Http\Controllers\Api\CompensatoryOffController;
+use App\Http\Controllers\Api\ComplianceDeclarationReportController;
 use App\Http\Controllers\Api\ComplianceObligationController;
 use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\CountryController;
@@ -514,9 +515,19 @@ Route::prefix('v1')->group(function () {
 
         Route::get('entity-statuses', [EntityStatusController::class, 'index']);
 
-        // Lecture des obligations (référentiel échéances) — tenant + plateforme
+        // Lecture du calendrier des échéances — entreprise + plateforme
+        Route::middleware('permission:tenant.portal|platform.manage|reports.view')->get(
+            'compliance-obligations',
+            [ComplianceObligationController::class, 'index']
+        );
+
+        Route::middleware('permission:tenant.portal|platform.manage|reports.view')->group(function () {
+            Route::get('compliance-declarations/report', [ComplianceDeclarationReportController::class, 'show']);
+            Route::get('compliance-declarations/report/pdf', [ComplianceDeclarationReportController::class, 'downloadPdf']);
+            Route::post('compliance-declarations/payment', [ComplianceDeclarationReportController::class, 'updatePayment']);
+        });
+
         Route::middleware('permission:tenant.portal|platform.manage')->group(function () {
-            Route::get('compliance-obligations', [ComplianceObligationController::class, 'index']);
             Route::get('compliance-obligations/{compliance_obligation}', [ComplianceObligationController::class, 'show']);
         });
 
