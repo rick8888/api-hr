@@ -489,6 +489,10 @@ Route::prefix('v1')->group(function () {
             Route::get('platform-settings', [PlatformSettingController::class, 'index']);
             Route::put('platform-settings', [PlatformSettingController::class, 'update']);
 
+            Route::get('contact-requests', [ContactController::class, 'index']);
+            Route::patch('contact-requests/{contactRequest}', [ContactController::class, 'update']);
+            Route::delete('contact-requests/{contactRequest}', [ContactController::class, 'destroy']);
+
             Route::get('entity-statuses/catalogs', [EntityStatusController::class, 'catalogs']);
             Route::apiResource('entity-statuses', EntityStatusController::class)
                 ->parameter('entity-statuses', 'entity_status')

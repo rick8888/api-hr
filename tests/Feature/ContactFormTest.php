@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Domain\Platform\Models\ContactRequest;
 use App\Models\User;
 use App\Notifications\ContactFormReceived;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -76,13 +77,59 @@ class ContactFormTest extends TestCase
             ->assertJsonValidationErrors(['name', 'email', 'subject', 'message']);
     }
 
-    public function test_contact_request_reports_unavailable_when_no_super_admin_exists(): void
+    public function test_contact_request_is_stored_even_without_super_admin(): void
     {
+        Notification::fake();
+
         $this->postJson('/api/v1/contact', [
             'name' => 'Alex Client',
             'email' => 'alex@example.test',
             'subject' => 'Présentation',
             'message' => 'Je souhaite organiser une démonstration.',
-        ])->assertServiceUnavailable();
+        ])->assertAccepted();
+
+        $this->assertDatabaseHas('contact_requests', [
+            'email' => 'alex@example.test',
+            'subject' => 'Présentation',
+            'status' => 'new',
+        ]);
+        Notification::assertNothingSent();
+    }
+
+    public function test_super_admin_can_list_update_and_delete_contact_requests(): void
+    {
+        $admin = User::factory()->create(['role' => 'super_admin']);
+        $request = ContactRequest::create([
+            'name' => 'Alex Client',
+            'email' => 'alex@example.test',
+            'subject' => 'Démo',
+            'message' => 'Je souhaite organiser une démonstration.',
+        ]);
+
+        $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/contact-requests')
+            ->assertOk()
+            ->assertJsonPath('data.0.email', 'alex@example.test')
+            ->assertJsonPath('meta.unread', 1);
+
+        $this->actingAs($admin, 'sanctum')
+            ->patchJson("/api/v1/contact-requests/{$request->id}", ['status' => 'processed'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'processed');
+        $this->assertNotNull($request->fresh()->read_at);
+
+        $this->actingAs($admin, 'sanctum')
+            ->deleteJson("/api/v1/contact-requests/{$request->id}")
+            ->assertNoContent();
+        $this->assertDatabaseMissing('contact_requests', ['id' => $request->id]);
+    }
+
+    public function test_non_super_admin_cannot_list_contact_requests(): void
+    {
+        $tenant = User::factory()->create(['role' => 'tenant']);
+
+        $this->actingAs($tenant, 'sanctum')
+            ->getJson('/api/v1/contact-requests')
+            ->assertForbidden();
     }
 }
